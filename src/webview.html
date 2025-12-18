@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root {
+            --primary: var(--vscode-button-background);
+            --primary-foreground: var(--vscode-button-foreground);
+            --bg: var(--vscode-editor-background);
+            --fg: var(--vscode-editor-foreground);
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --card-border: var(--vscode-input-border);
+            --input-bg: var(--vscode-input-background);
+            --input-fg: var(--vscode-input-foreground);
+            --radius: 8px;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        body {
+            font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
+            padding: 24px;
+            background-color: var(--bg);
+            color: var(--fg);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 700;
+            margin: 0;
+            background: linear-gradient(135deg, var(--vscode-textLink-foreground), var(--vscode-button-background));
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Card Styles */
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 20px;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .card:hover {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .card-title-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .card-description {
+            font-size: 13px;
+            opacity: 0.7;
+        }
+
+        /* Input Styles */
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            gap: 8px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            background: var(--input-bg);
+            color: var(--input-fg);
+            border: 1px solid var(--card-border);
+            border-radius: 4px;
+            padding: 10px 12px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"]:focus {
+            border-color: var(--vscode-focusBorder);
+        }
+
+        /* Button Styles */
+        button {
+            padding: 10px 16px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 4px;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: var(--primary-foreground);
+        }
+
+        .btn-primary:hover {
+            background: var(--vscode-button-hoverBackground);
+            transform: translateY(-1px);
+        }
+
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--card-border);
+            color: var(--fg);
+        }
+
+        .btn-outline:hover {
+            background: var(--vscode-toolbar-hoverBackground);
+            border-color: var(--vscode-focusBorder);
+        }
+
+        .btn-icon {
+            padding: 8px;
+            min-width: 36px;
+        }
+
+        /* Output View */
+        #output {
+            margin-top: 12px;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: var(--radius);
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 12px;
+            white-space: pre-wrap;
+            overflow-x: auto;
+            max-height: 300px;
+            border: 1px solid var(--card-border);
+        }
+
+        /* Icons */
+        .icon {
+            width: 16px;
+            height: 16px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .container>* {
+            animation: fadeIn 0.4s ease forwards;
+        }
+
+        .container>*:nth-child(2) {
+            animation-delay: 0.1s;
+        }
+
+        .container>*:nth-child(3) {
+            animation-delay: 0.2s;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>Codestory View</h1>
+        </header>
+
+        <section class="card">
+            <div class="card-header">
+                <div class="card-title-group">
+                    <div class="card-title">
+                        <svg class="icon">
+                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z">
+                            </path>
+                        </svg>
+                        Repository
+                    </div>
+                    <div class="card-description">Select a local git repository to visualize</div>
+                </div>
+                <button id="browseBtn" class="btn-outline btn-icon" title="Browse for repository">
+                    <svg class="icon">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="input-group">
+                <div class="input-wrapper">
+                    <input type="text" id="dirInput" placeholder="/path/to/repo" spellcheck="false" />
+                </div>
+                <button id="loadBtn" class="btn-primary w-full">
+                    Load Repository
+                </button>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-title" style="margin-bottom: 12px;">Output</div>
+            <div id="output">Waiting for input...</div>
+            <div style="margin-top: 12px;">
+                <button id="testBtn" class="btn-outline" style="width: 100%;">
+                    Test CLI Connection
+                </button>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+
+        // Elements
+        const dirInput = document.getElementById('dirInput');
+        const browseBtn = document.getElementById('browseBtn');
+        const loadBtn = document.getElementById('loadBtn');
+        const testBtn = document.getElementById('testBtn');
+        const outputDiv = document.getElementById('output');
+
+        // Restore state if available
+        const prevState = vscode.getState();
+        if (prevState && prevState.directory) {
+            dirInput.value = prevState.directory;
+        }
+
+        // Event Listeners
+        browseBtn.addEventListener('click', () => {
+            vscode.postMessage({ command: 'selectDirectory' });
+        });
+
+        loadBtn.addEventListener('click', () => {
+            const directory = dirInput.value.trim();
+            if (!directory) {
+                updateOutput("Error: Please select or enter a directory path.");
+                return;
+            }
+            updateOutput("Loading repository...");
+            vscode.postMessage({ command: 'loadRepo', directory });
+            vscode.setState({ directory });
+        });
+
+        testBtn.addEventListener('click', () => {
+            const directory = dirInput.value.trim();
+            updateOutput("Running connection test...");
+            vscode.postMessage({ command: 'runTest', directory });
+        });
+
+        dirInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                loadBtn.click();
+            }
+        });
+
+        // Message Handling
+        window.addEventListener('message', event => {
+            const message = event.data;
+            switch (message.command) {
+                case 'displayDirectory':
+                    dirInput.value = message.directory;
+                    vscode.setState({ directory: message.directory });
+                    // Scroll to end of input
+                    dirInput.scrollLeft = dirInput.scrollWidth;
+                    break;
+                case 'displayOutput':
+                    updateOutput(message.data);
+                    break;
+                case 'displayCommits':
+                    console.log("Commits received:", message.commits);
+                    break;
+            }
+        });
+
+        function updateOutput(text) {
+            outputDiv.textContent = text;
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }
+    </script>
+</body>
+
+</html>

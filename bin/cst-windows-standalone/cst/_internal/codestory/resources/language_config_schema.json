@@ -1,0 +1,87 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Language Configuration for Semantic Analysis",
+    "description": "Configuration for programming languages to support semantic analysis using tree-sitter queries.",
+    "type": "object",
+    "patternProperties": {
+        "^[a-z_]+$": {
+            "type": "object",
+            "description": "Configuration for a specific language, identified by its name (e.g., 'python').",
+            "properties": {
+                "shared_token_queries": {
+                    "type": "object",
+                    "description": "Defines classes to join tokens semantically. For example, if a variable definition is changed in one diff, other diffs that use that variable can be grouped together. Each property within this object represents a distinct semantic class of tokens.",
+                    "patternProperties": {
+                        "^[a-z_]+$": {
+                            "type": "object",
+                            "description": "A semantic class for tokens (e.g., 'identifier_class').",
+                            "properties": {
+                                "general_queries": {
+                                    "type": "array",
+                                    "description": "Tree-sitter queries to find all occurrences of tokens belonging to this class. These queries should match singular nodes.",
+                                    "items": {
+                                        "type": "string",
+                                        "description": "A tree-sitter query with a '@placeholder' capture."
+                                    }
+                                },
+                                "definition_queries": {
+                                    "type": "array",
+                                    "description": "Tree-sitter queries to find only the definition sites of tokens in this class.",
+                                    "items": {
+                                        "type": "string",
+                                        "description": "A tree-sitter query with a '@placeholder' capture."
+                                    }
+                                }
+                            },
+                            "required": ["general_queries", "definition_queries"]
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "scope_queries": {
+                    "type": "object",
+                    "description": "Tree-sitter queries that match entire scope blocks. Contains two categories: named scopes (with identifiable names) and structural scopes (control flow/expressions).",
+                    "properties": {
+                        "named_scope": {
+                            "type": "array",
+                            "description": "Tree-sitter queries for scopes with names (e.g., functions, classes, methods) that can be used for fully qualified names.",
+                            "items": {
+                                "type": "string",
+                                "description": "A tree-sitter query with a '@placeholder' capture."
+                            }
+                        },
+                        "structural_scope": {
+                            "type": "array",
+                            "description": "Tree-sitter queries for structural scopes without meaningful names (e.g., if-statements, loops, expressions).",
+                            "items": {
+                                "type": "string",
+                                "description": "A tree-sitter query with a '@placeholder' capture."
+                            }
+                        }
+                    },
+                    "required": ["named_scope", "structural_scope"]
+                },
+                "comment_queries": {
+                    "type": "array",
+                    "description": "Tree-sitter queries used to identify comment-only lines for special processing.",
+                    "items": {
+                        "type": "string",
+                        "description": "A tree-sitter query with a '@placeholder' capture."
+                    }
+                },
+                "share_tokens_between_files": {
+                    "type": "string",
+                    "description": "Indicates whether tokens can be semantically shared between different files. This is rarely false.",
+                    "enum": ["True", "False"]
+                }
+            },
+            "required": [
+                "shared_token_queries",
+                "scope_queries",
+                "comment_queries",
+                "share_tokens_between_files"
+            ]
+        }
+    },
+    "additionalProperties": false
+}
