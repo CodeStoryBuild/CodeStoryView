@@ -33,7 +33,7 @@ interface GitVisualizerProps {
     branch: string;
     onCommitSelect: (commit: any) => void;
     isLoading?: boolean;
-    apiConfiguration?: { provider: string; model: string; apiKey: string } | null;
+    apiConfiguration?: { provider: string; model: string; globalConfig: Record<string, any> } | null;
     onOpenApiManager?: () => void;
 }
 

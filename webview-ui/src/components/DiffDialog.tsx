@@ -29,7 +29,7 @@ export function DiffDialog({
   repoPath: string;
   branch: string;
   commit: any | null;
-  apiConfiguration?: { provider: string; model: string; apiKey: string } | null;
+  apiConfiguration?: { provider: string; model: string; globalConfig: Record<string, any> } | null;
   onOpenApiManager?: () => void;
 }) {
   const [loading, setLoading] = useState(false);
@@ -41,7 +41,7 @@ export function DiffDialog({
   const [localApiConfiguration, setLocalApiConfiguration] = useState<{
     provider: string;
     model: string;
-    apiKey: string;
+    globalConfig: Record<string, any>;
   } | null>(apiConfiguration || null);
   const [isExecuting, setIsExecuting] = useState(false);
 
@@ -49,7 +49,7 @@ export function DiffDialog({
   const handleApiConfigurationChange = (config: {
     provider: string;
     model: string;
-    apiKey: string;
+    globalConfig: Record<string, any>;
   }) => {
     setLocalApiConfiguration(config);
   };
@@ -128,11 +128,8 @@ export function DiffDialog({
     // Build a small, extensible "globalArgs" object which the extension will map to CLI args
     const globalArgs: Record<string, any> = {
       model: `${localApiConfiguration.provider}:${localApiConfiguration.model}`,
+      ...localApiConfiguration.globalConfig,
     };
-
-    if (localApiConfiguration.apiKey && localApiConfiguration.apiKey.trim().length > 0) {
-      globalArgs.api_key = localApiConfiguration.apiKey;
-    }
 
     const payload: any = {
       command: isCommit ? 'runVibeCommandCommit' : 'runVibeCommandFix',

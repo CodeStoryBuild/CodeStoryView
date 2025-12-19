@@ -49,7 +49,22 @@ export function activate(context: vscode.ExtensionContext) {
         const GLOBAL_ARG_CLI_MAP: Record<string, string> = {
             model: '--model',
             api_key: '--api-key',
-            // provider could be used separately in the future
+            api_base: '--api-base',
+            temperature: '--temperature',
+            max_tokens: '--max-tokens',
+            secret_scanner_aggression: '--secret-scanner-aggression',
+            fallback_grouping_strategy: '--fallback-grouping-strategy',
+            chunking_level: '--chunking-level',
+            verbose: '--verbose',
+            auto_accept: '--yes',
+            silent: '--silent',
+            ask_for_commit_message: '--ask-for-commit-message',
+            display_diff_type: '--display-diff-type',
+            custom_language_config: '--custom-language-config',
+            batching_strategy: '--batching-strategy',
+            custom_embedding_model: '--custom-embedding-model',
+            cluster_strictness: '--cluster-strictness',
+            num_retries: '--num-retries',
         };
 
         // Convert a small "globalArgs" object into an argv array of global CLI args.
@@ -223,16 +238,24 @@ export function activate(context: vscode.ExtensionContext) {
                         }
                         return;
 
-                    case 'getApiKey':
-                        const apiKey = await context.secrets.get('vibe_api_key');
-                        panel.webview.postMessage({ command: 'apiKey', key: apiKey });
+                    case 'getGlobalConfig':
+                        const configStr = await context.secrets.get('vibe_global_config');
+                        let config = {};
+                        if (configStr) {
+                            try {
+                                config = JSON.parse(configStr);
+                            } catch (e) {
+                                console.error('Failed to parse global config', e);
+                            }
+                        }
+                        panel.webview.postMessage({ command: 'globalConfig', config });
                         return;
 
-                    case 'setApiKey':
-                        if (message.key) {
-                            await context.secrets.store('vibe_api_key', message.key);
+                    case 'setGlobalConfig':
+                        if (message.config) {
+                            await context.secrets.store('vibe_global_config', JSON.stringify(message.config));
                         } else {
-                            await context.secrets.delete('vibe_api_key');
+                            await context.secrets.delete('vibe_global_config');
                         }
                         return;
 

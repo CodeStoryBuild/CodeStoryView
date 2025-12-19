@@ -22,19 +22,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Eye, EyeOff, Settings, X, ExternalLink, Check, ChevronsUpDown } from "lucide-react";
+import { Eye, EyeOff, Settings, X, ExternalLink, Check, ChevronsUpDown, Trash2, Plus } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getVsCodeApi } from "@/lib/vscode";
 import { cn } from "@/lib/utils";
-
-interface ApiKeyManagerProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onConfigurationChange: (config: { provider: string; model: string; apiKey: string }) => void;
-  currentProvider?: string;
-  currentModel?: string;
-  currentApiKey?: string;
-}
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 const PROVIDER_MODELS: Record<string, string[]> = {
   azure: ['gpt-4', 'gpt-4-32k', 'gpt-35-turbo', 'gpt-35-turbo-16k'],
@@ -71,10 +65,61 @@ const GET_KEY_LINKS: Record<string, string> = {
   cohere: 'https://dashboard.cohere.com/api-keys',
 };
 
+type ConfigOptionType = "string" | "number" | "boolean" | "literal";
+
+interface ConfigOption {
+  type: ConfigOptionType;
+  allowed?: string[];
+  description: string;
+  min?: number;
+  max?: number;
+  is_int?: boolean;
+}
+
+const GLOBAL_OPTIONS: Record<string, ConfigOption> = {
+  api_key: { type: "string", description: "API key for the LLM provider" },
+  api_base: { type: "string", description: "Custom API base URL for the LLM provider (optional)" },
+  temperature: { type: "number", description: "Temperature for LLM responses (0.0-1.0)", min: 0.0, max: 1.0 },
+  max_tokens: { type: "number", description: "Maximum tokens to send for LLM requests", min: 1, is_int: true },
+  secret_scanner_aggression: {
+    type: "literal",
+    description: "How aggresively to scan for secrets ('cst commit' only)",
+    allowed: ["safe", "standard", "strict", "none"]
+  },
+  fallback_grouping_strategy: {
+    type: "literal",
+    description: "Strategy for grouping changes that were not able to be analyzed",
+    allowed: ["all_together", "by_file_path", "by_file_name", "by_file_extension", "all_alone"]
+  },
+  chunking_level: {
+    type: "literal",
+    description: "Which type of changes should be chunked further into smaller pieces",
+    allowed: ["none", "full_files", "all_files"]
+  },
+  verbose: { type: "boolean", description: "Enable verbose logging output" },
+  auto_accept: { type: "boolean", description: "Automatically accept all prompts without user confirmation" },
+  silent: { type: "boolean", description: "Do not output any text to the console, except for prompting acceptance" },
+  ask_for_commit_message: { type: "boolean", description: "Allow asking you to provide commit messages to optionally override the auto generated ones" },
+  display_diff_type: {
+    type: "literal",
+    description: "Type of diff to display when showing diffs (semantic or git)",
+    allowed: ["semantic", "git"]
+  },
+  custom_language_config: { type: "string", description: "Path to custom language configuration JSON file" },
+  batching_strategy: {
+    type: "literal",
+    description: "Strategy for batching LLM requests (auto, requests, prompt)",
+    allowed: ["auto", "requests", "prompt"]
+  },
+  custom_embedding_model: { type: "string", description: "FastEmbed supported text embedding model" },
+  cluster_strictness: { type: "number", description: "Strictness of clustering logical groups together (0-1)", min: 0.0, max: 1.0 },
+  num_retries: { type: "number", description: "How many times to retry calling a model if it fails (0-10)", min: 0, max: 10, is_int: true },
+};
+
 const STORAGE_KEYS = {
   PROVIDER: "vibe_selected_provider",
   MODEL: "vibe_selected_model",
-  API_KEY: "vibe_api_key",
+  GLOBAL_CONFIG: "vibe_global_config",
 };
 
 export function ApiKeyManager({
@@ -83,18 +128,29 @@ export function ApiKeyManager({
   onConfigurationChange,
   currentProvider,
   currentModel,
-  currentApiKey,
-}: ApiKeyManagerProps) {
+  currentGlobalConfig,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfigurationChange: (config: { provider: string; model: string; globalConfig: Record<string, any> }) => void;
+  currentProvider?: string;
+  currentModel?: string;
+  currentGlobalConfig?: Record<string, any>;
+}) {
   const [selectedProvider, setSelectedProvider] = useState<string>("openai");
   const [selectedModel, setSelectedModel] = useState<string>("gpt-4o");
-  // Allows the user to type a model name (freeform) before accepting it
   const [modelQuery, setModelQuery] = useState<string>("gpt-4o");
-  const [apiKey, setApiKey] = useState<string>(currentApiKey || "");
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [globalConfig, setGlobalConfig] = useState<Record<string, any>>(currentGlobalConfig || {});
   const [error, setError] = useState("");
   const [providerOpen, setProviderOpen] = useState(false);
   const [modelOpen, setModelOpen] = useState(false);
   const vscode = getVsCodeApi();
+
+  // Helper to get entries for the UI (including an empty one at the end)
+  const configEntries = useMemo(() => {
+    const entries = Object.entries(globalConfig);
+    return [...entries, ["", ""]];
+  }, [globalConfig]);
 
   // When model popover opens, initialize query to the selected model so it can be edited
   useEffect(() => {
@@ -130,21 +186,21 @@ export function ApiKeyManager({
       setModelQuery(savedModel);
     }
     
-    // Request API key from extension (SecretStorage)
-    vscode.postMessage({ command: 'getApiKey' });
+    // Request global config from extension (SecretStorage)
+    vscode.postMessage({ command: 'getGlobalConfig' });
   }, []);
 
   // Handle messages from extension
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
-      if (message.command === 'apiKey') {
-        if (message.key) {
-          setApiKey(message.key);
+      if (message.command === 'globalConfig') {
+        if (message.config) {
+          setGlobalConfig(message.config);
           onConfigurationChange({
             provider: selectedProvider,
             model: selectedModel,
-            apiKey: message.key,
+            globalConfig: message.config,
           });
         }
       }
@@ -166,7 +222,7 @@ export function ApiKeyManager({
     onConfigurationChange({
       provider: newProvider,
       model: defaultModel,
-      apiKey: apiKey,
+      globalConfig: globalConfig,
     });
   };
 
@@ -180,22 +236,36 @@ export function ApiKeyManager({
     onConfigurationChange({
       provider: selectedProvider,
       model: newModel,
-      apiKey: apiKey,
+      globalConfig: globalConfig,
     });
   };
 
-  const handleApiKeyChange = (newApiKey: string) => {
-    setApiKey(newApiKey);
+  const handleGlobalConfigChange = (newConfig: Record<string, any>) => {
+    setGlobalConfig(newConfig);
     setError("");
 
     // Save to extension (SecretStorage)
-    vscode.postMessage({ command: 'setApiKey', key: newApiKey });
+    vscode.postMessage({ command: 'setGlobalConfig', config: newConfig });
 
     onConfigurationChange({
       provider: selectedProvider,
       model: selectedModel,
-      apiKey: newApiKey,
+      globalConfig: newConfig,
     });
+  };
+
+  const updateConfigValue = (key: string, value: any) => {
+    const newConfig = { ...globalConfig };
+    if (key) {
+      newConfig[key] = value;
+      handleGlobalConfigChange(newConfig);
+    }
+  };
+
+  const removeConfigKey = (key: string) => {
+    const newConfig = { ...globalConfig };
+    delete newConfig[key];
+    handleGlobalConfigChange(newConfig);
   };
 
   const handleSave = () => {
@@ -207,7 +277,7 @@ export function ApiKeyManager({
     onConfigurationChange({
       provider: selectedProvider,
       model: selectedModel,
-      apiKey: apiKey.trim(),
+      globalConfig: globalConfig,
     });
     onOpenChange(false);
   };
@@ -226,7 +296,7 @@ export function ApiKeyManager({
         <CardHeader className="pb-2 pt-4 px-4">
           <div className="flex items-center justify-between">
             <div className="flex-1 text-center">
-              <CardTitle className="text-sm font-semibold">Api Key Config</CardTitle>
+              <CardTitle className="text-sm font-semibold">Run Config</CardTitle>
             </div>
             <Button
               variant="ghost"
@@ -373,48 +443,133 @@ export function ApiKeyManager({
             </div>
           </div>
 
-          {/* API Key Input */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="api-key" className="text-[10px] font-medium uppercase tracking-wider opacity-70">
-                API Key
-              </Label>
-              {getKeyUrl && (
-                <a
-                  href={getKeyUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[10px] text-primary hover:underline inline-flex items-center gap-0.5"
-                >
-                  Get Key
-                  <ExternalLink className="h-2.5 w-2.5" />
-                </a>
-              )}
-            </div>
-            <div className="relative">
-              <Input
-                id="api-key"
-                type={showApiKey ? "text" : "password"}
-                placeholder="Enter your API key"
-                value={apiKey}
-                onChange={(e) => handleApiKeyChange(e.target.value)}
-                className="pr-8 h-8 text-xs"
-                autoComplete="off"
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="absolute right-0 top-0 h-full px-2 hover:bg-transparent opacity-50 hover:opacity-100"
-                onClick={() => setShowApiKey(!showApiKey)}
-              >
-                {showApiKey ? (
-                  <EyeOff className="h-3.5 w-3.5" />
-                ) : (
-                  <Eye className="h-3.5 w-3.5" />
-                )}
-              </Button>
-            </div>
+          {/* Global Config Options */}
+          <div className="space-y-2">
+            <Label className="text-[10px] font-medium uppercase tracking-wider opacity-70">
+              Global Options
+            </Label>
+            <ScrollArea className="h-[200px] pr-3 -mr-3">
+              <div className="space-y-3">
+                {configEntries.map(([key, value], index) => {
+                  const option = GLOBAL_OPTIONS[key];
+                  const isNewRow = key === "";
+                  
+                  return (
+                    <div key={index} className="flex flex-col gap-1.5 p-2 rounded-md border border-border/50 bg-muted/30">
+                      <div className="flex items-center justify-between gap-2">
+                        <Select
+                          value={key}
+                          onValueChange={(newKey) => {
+                            if (newKey === key) return;
+                            const newOption = GLOBAL_OPTIONS[newKey];
+                            let defaultValue: any = "";
+                            if (newOption.type === "boolean") defaultValue = false;
+                            if (newOption.type === "number") defaultValue = newOption.min ?? 0;
+                            if (newOption.type === "literal") defaultValue = newOption.allowed?.[0] ?? "";
+                            
+                            const newConfig = { ...globalConfig };
+                            if (key) delete newConfig[key];
+                            newConfig[newKey] = defaultValue;
+                            handleGlobalConfigChange(newConfig);
+                          }}
+                        >
+                          <SelectTrigger className="h-7 text-[11px] flex-1">
+                            <SelectValue placeholder="Select option..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.keys(GLOBAL_OPTIONS)
+                              .filter(k => k === key || !globalConfig.hasOwnProperty(k))
+                              .map(k => (
+                                <SelectItem key={k} value={k} className="text-[11px]">
+                                  {k}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        {!isNewRow && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                            onClick={() => removeConfigKey(key)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        )}
+                      </div>
+
+                      {key && option && (
+                        <div className="flex flex-col gap-1.5">
+                          <p className="text-[10px] text-muted-foreground leading-tight">
+                            {option.description}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            {option.type === "boolean" ? (
+                              <div className="flex items-center gap-2">
+                                <Switch
+                                  checked={!!value}
+                                  onCheckedChange={(checked) => updateConfigValue(key, checked)}
+                                />
+                                <span className="text-[11px]">{value ? "On" : "Off"}</span>
+                              </div>
+                            ) : option.type === "literal" ? (
+                              <Select
+                                value={value}
+                                onValueChange={(v) => updateConfigValue(key, v)}
+                              >
+                                <SelectTrigger className="h-7 text-[11px] w-full">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {option.allowed?.map(v => (
+                                    <SelectItem key={v} value={v} className="text-[11px]">
+                                      {v}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <div className="relative w-full">
+                                <Input
+                                  type={key === "api_key" ? "password" : option.type === "number" ? "number" : "text"}
+                                  value={value}
+                                  onChange={(e) => {
+                                    let val: any = e.target.value;
+                                    if (option.type === "number") {
+                                      val = option.is_int ? parseInt(val) : parseFloat(val);
+                                      if (isNaN(val)) val = 0;
+                                    }
+                                    updateConfigValue(key, val);
+                                  }}
+                                  className="h-7 text-[11px] pr-8"
+                                  step={option.type === "number" && !option.is_int ? "0.1" : "1"}
+                                  min={option.min}
+                                  max={option.max}
+                                />
+                                {key === "api_key" && (
+                                  <div className="absolute right-0 top-0 h-full flex items-center pr-2">
+                                    {GET_KEY_LINKS[selectedProvider] && (
+                                      <a
+                                        href={GET_KEY_LINKS[selectedProvider]}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-primary hover:text-primary/80"
+                                      >
+                                        <ExternalLink className="h-3 w-3" />
+                                      </a>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
           </div>
 
           {/* Error Display */}

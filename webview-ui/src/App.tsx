@@ -22,7 +22,7 @@ function App() {
   const [apiConfiguration, setApiConfiguration] = useState<{
     provider: string;
     model: string;
-    apiKey: string;
+    globalConfig: Record<string, any>;
   } | null>(null);
 
   // Initialize API configuration from localStorage and extension SecretStorage
@@ -32,15 +32,15 @@ function App() {
 
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
-      if (message.command === 'apiKey') {
-        const key = message.key || '';
-        setApiConfiguration({ provider: savedProvider, model: savedModel, apiKey: key });
+      if (message.command === 'globalConfig') {
+        const config = message.config || {};
+        setApiConfiguration({ provider: savedProvider, model: savedModel, globalConfig: config });
       }
     };
 
     window.addEventListener('message', handleMessage);
-    // Ask the extension for the stored API key (SecretStorage)
-    vscode.postMessage({ command: 'getApiKey' });
+    // Ask the extension for the stored global config (SecretStorage)
+    vscode.postMessage({ command: 'getGlobalConfig' });
 
     return () => window.removeEventListener('message', handleMessage);
   }, [vscode]);
@@ -181,12 +181,12 @@ function App() {
         onConfigurationChange={setApiConfiguration}
         currentProvider={apiConfiguration?.provider}
         currentModel={apiConfiguration?.model}
-        currentApiKey={apiConfiguration?.apiKey}
+        currentGlobalConfig={apiConfiguration?.globalConfig}
       />
 
       <ApiKeyManagerToggle
         onClick={() => setShowApiManager(!showApiManager)}
-        isConfigured={!!apiConfiguration?.apiKey}
+        isConfigured={!!apiConfiguration?.globalConfig?.api_key}
       />
 
       {/* CST Download Overlay */}
