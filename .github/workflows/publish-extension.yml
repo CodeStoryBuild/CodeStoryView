@@ -8,6 +8,8 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -80,13 +82,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Find generated .vsix
-        run: echo "VSIX_FILE=$(ls *.vsix | head -n 1)" >> $GITHUB_ENV
-
-      - name: Upload .vsix to release
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ${{ env.VSIX_FILE }}
-          asset_name: ${{ env.VSIX_FILE }}
-          asset_content_type: application/octet-stream
+      - name: Create GitHub Release and Upload VSIX
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Finds the first .vsix file in the directory
+          VSIX_FILE=$(ls *.vsix | head -n 1)
+          
+          # Uses GitHub CLI to create a release and attach the file in one go
+          gh release create ${{ env.TAG }} \
+            --title "${{ env.TAG }}" \
+            --notes "Release for version ${{ env.VERSION }}" \
+            "$VSIX_FILE"
