@@ -1,7 +1,7 @@
   {
     "name": "codestory-view",
     "displayName": "Codestory View",
-    "publisher": "codestory",
+    "publisher": "codestorybuild",
     "description": "Visualizer for Codestory CLI",
     "version": "0.0.1",
     "engines": {
