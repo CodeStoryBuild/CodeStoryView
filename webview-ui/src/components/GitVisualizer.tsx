@@ -52,7 +52,7 @@ export function GitVisualizer({
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedCommit, setSelectedCommit] = useState<CommitNode | null>(null);
     const [isDiffOpen, setIsDiffOpen] = useState(false);
-    const [executingCommits] = useState<Set<string>>(new Set());
+    const [executingCommits, setExecutingCommits] = useState<Set<string>>(new Set());
     const [newNodeIds] = useState<Set<string>>(new Set());
     const vscode = getVsCodeApi();
 
@@ -80,6 +80,9 @@ export function GitVisualizer({
                     break;
                 case 'displayOutput':
                     // console.log(message.data);
+                    break;
+                case 'resetExecuting':
+                    setExecutingCommits(new Set());
                     break;
             }
         };
@@ -382,6 +385,13 @@ export function GitVisualizer({
                 commit={selectedCommit}
                 apiConfiguration={apiConfiguration}
                 onOpenApiManager={onOpenApiManager}
+                onExecute={(hash) => {
+                    setExecutingCommits(prev => {
+                        const next = new Set(prev);
+                        next.add(hash);
+                        return next;
+                    });
+                }}
             />
         </div>
     );

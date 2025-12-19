@@ -23,6 +23,7 @@ export function DiffDialog({
   commit,
   apiConfiguration,
   onOpenApiManager,
+  onExecute,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -31,6 +32,7 @@ export function DiffDialog({
   commit: any | null;
   apiConfiguration?: { provider: string; model: string; globalConfig: Record<string, any> } | null;
   onOpenApiManager?: () => void;
+  onExecute?: (hash: string) => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +84,8 @@ export function DiffDialog({
           setError("Failed to parse diff");
           setLoading(false);
         }
+      } else if (message.command === 'resetExecuting') {
+        setIsExecuting(false);
       }
     };
 
@@ -121,6 +125,9 @@ export function DiffDialog({
     }
 
     setIsExecuting(true);
+    if (commit?.hash && onExecute) {
+      onExecute(commit.hash);
+    }
 
     // Use command-specific backend commands so we can add args per-command later.
     const isCommit = command === "commit";

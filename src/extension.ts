@@ -4,12 +4,46 @@ import * as fs from 'fs';
 import { fetchCommits, fetchBranches, fetchDiff, isGitRepo } from './git/git-logic';
 import { CstManager } from './cst-manager';
 
+let codestoryTerminal: vscode.Terminal | undefined;
+let isExecuting = false;
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('Codestory View extension is now active!');
 
     const cstManager = new CstManager(context);
 
     let activePanel: vscode.WebviewPanel | undefined;
+
+    context.subscriptions.push(vscode.window.onDidEndTerminalShellExecution(async (e) => {
+        if (e.terminal === codestoryTerminal) {
+            isExecuting = false;
+            if (e.exitCode === 0) {
+                if (activePanel) {
+                    activePanel.webview.postMessage({ 
+                        command: 'displayOutput', 
+                        data: `Command finished successfully. Refreshing graph...` 
+                    });
+                    activePanel.webview.postMessage({ command: 'refreshGraph' });
+                    activePanel.webview.postMessage({ command: 'resetExecuting' });
+                }
+            } else {
+                if (activePanel) {
+                    activePanel.webview.postMessage({ 
+                        command: 'displayOutput', 
+                        data: `Command failed with code ${e.exitCode}` 
+                    });
+                    activePanel.webview.postMessage({ command: 'resetExecuting' });
+                }
+            }
+        }
+    }));
+
+    context.subscriptions.push(vscode.window.onDidCloseTerminal((t) => {
+        if (t === codestoryTerminal) {
+            codestoryTerminal = undefined;
+            isExecuting = false;
+        }
+    }));
 
     let disposable = vscode.commands.registerCommand('codestory-view.start', async () => {
         const panel = vscode.window.createWebviewPanel(
@@ -361,58 +395,42 @@ async function runCstInTerminal(
     args: string[], 
     panel?: vscode.WebviewPanel
 ): Promise<void> {
-    return new Promise((resolve) => {
-        const writeEmitter = new vscode.EventEmitter<string>();
-        let stderr = '';
+    if (isExecuting) {
+        vscode.window.showWarningMessage("A Codestory command is already running in the terminal.");
+        return Promise.resolve();
+    }
+
+    if (!codestoryTerminal || codestoryTerminal.exitStatus !== undefined) {
+        codestoryTerminal = vscode.window.createTerminal({
+            name: "Codestory",
+            cwd: cwd
+        });
+    }
+    
+    codestoryTerminal.show();
+    
+    const shell = (vscode.env.shell || '').toLowerCase();
+    const isPowerShell = shell.includes('powershell') || shell.includes('pwsh');
+
+    // Prepend the --repo argument to ensure the command runs against the correct directory
+    // without needing to 'cd' first.
+    const finalArgs = ['--repo', cwd, ...args];
+
+    // Quote arguments that contain spaces to ensure they are parsed correctly across all shells.
+    const escapedArgs = finalArgs.map(arg => (arg.includes(' ') && !arg.startsWith('"')) ? `"${arg}"` : arg);
+    const joinedArgs = escapedArgs.join(' ');
+
+    // PowerShell requires the call operator '&' to execute a quoted path.
+    // Other shells (Bash, CMD, Zsh) handle quoted paths directly.
+    const fullCommand = isPowerShell 
+        ? `& "${executable}" ${joinedArgs}` 
+        : `"${executable}" ${joinedArgs}`;
         
-        const pty: vscode.Pseudoterminal = {
-            onDidWrite: writeEmitter.event,
-            open: () => {
-                writeEmitter.fire(`> Executing: ${executable} ${args.join(' ')}\r\n\r\n`);
-                
-                const child = cp.spawn(`"${executable}"`, args, { 
-                    cwd, 
-                    shell: true,
-                    env: { ...process.env }
-                });
-
-                child.stdout.on('data', (data) => {
-                    writeEmitter.fire(data.toString().replace(/\r?\n/g, '\r\n'));
-                });
-
-                child.stderr.on('data', (data) => {
-                    const str = data.toString();
-                    stderr += str;
-                    writeEmitter.fire(str.replace(/\r?\n/g, '\r\n'));
-                });
-
-                child.on('close', (code) => {
-                    writeEmitter.fire(`\r\nProcess exited with code ${code}\r\n`);
-                    if (code !== 0) {
-                        const truncatedStderr = stderr.length > 500 ? stderr.substring(0, 500) + '...' : stderr;
-                        vscode.window.showWarningMessage(`Codestory command failed (code ${code}): ${truncatedStderr}`);
-                        if (panel) {
-                            panel.webview.postMessage({ 
-                                command: 'displayOutput', 
-                                data: `Command failed with code: ${code}` 
-                            });
-                        }
-                    } else {
-                        if (panel) {
-                            panel.webview.postMessage({ 
-                                command: 'displayOutput', 
-                                data: `Command finished successfully. Refreshing graph...` 
-                            });
-                            panel.webview.postMessage({ command: 'refreshGraph' });
-                        }
-                    }
-                    resolve();
-                });
-            },
-            close: () => {}
-        };
-
-        const terminal = vscode.window.createTerminal({ name, pty });
-        terminal.show();
-    });
+    isExecuting = true;
+    codestoryTerminal.sendText(fullCommand);
+    
+    // Resolve immediately to fix the "never finishing" issue.
+    // The terminal will handle the execution and the listener we added in activate 
+    // will handle the completion logic (refreshing graph, etc.)
+    return Promise.resolve();
 }
