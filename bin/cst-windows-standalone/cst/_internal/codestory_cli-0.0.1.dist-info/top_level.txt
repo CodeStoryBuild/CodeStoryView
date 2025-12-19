@@ -1,3 +1,0 @@
-codestory
-docs
-tests

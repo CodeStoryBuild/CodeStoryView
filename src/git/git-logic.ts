@@ -62,6 +62,18 @@ export function runGit(
     });
 }
 
+export async function isGitRepo(repoPath: string): Promise<boolean> {
+    try {
+        if (!fs.existsSync(repoPath) || !fs.statSync(repoPath).isDirectory()) {
+            return false;
+        }
+        await runGit(repoPath, ["rev-parse", "--is-inside-work-tree"]);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export async function fetchCommits(repoPath: string, branch: string = 'HEAD'): Promise<Commit[]> {
     try {
         // Include parent hashes (%P) to build a proper DAG client-side

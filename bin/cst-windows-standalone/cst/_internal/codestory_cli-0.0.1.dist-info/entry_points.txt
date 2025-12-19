@@ -1,2 +1,0 @@
-[console_scripts]
-cst = codestory.cli:run_app

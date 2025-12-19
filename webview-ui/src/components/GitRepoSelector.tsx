@@ -10,6 +10,7 @@ interface GitRepoSelectorProps {
     setRepoPath: (path: string) => void;
     onLoad: (path: string) => void;
     isTucked?: boolean;
+    error?: string | null;
 }
 
 export function GitRepoSelector({
@@ -17,6 +18,7 @@ export function GitRepoSelector({
     setRepoPath,
     onLoad,
     isTucked = false,
+    error = null,
 }: GitRepoSelectorProps) {
     const vscode = getVsCodeApi();
 
@@ -29,18 +31,6 @@ export function GitRepoSelector({
             onLoad(repoPath.trim());
         }
     };
-
-    // Add listener for selected directory from VS Code
-    React.useEffect(() => {
-        const handleMessage = (event: MessageEvent) => {
-            const message = event.data;
-            if (message.command === "displayDirectory") {
-                setRepoPath(message.directory);
-            }
-        };
-        window.addEventListener("message", handleMessage);
-        return () => window.removeEventListener("message", handleMessage);
-    }, [setRepoPath]);
 
     if (isTucked) {
         return (
@@ -64,34 +54,38 @@ export function GitRepoSelector({
     }
 
     return (
-        <Card className="w-full max-w-md border border-border bg-card/50 backdrop-blur-xl shadow-2xl animate-in fade-in zoom-in duration-500">
+        <Card className="w-full max-w-md border border-border bg-card/50 backdrop-blur-md shadow-sm animate-in fade-in duration-300">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <div className="flex flex-col gap-1">
-                    <CardTitle className="text-xl flex items-center gap-2">
-                        <FolderOpen className="h-5 w-5 text-primary" />
+                    <CardTitle className="text-lg flex items-center gap-2">
+                        <FolderOpen className="h-4 w-4 text-primary" />
                         Repository
                     </CardTitle>
-                    <CardDescription>Select a local git repository to visualize</CardDescription>
+                    <CardDescription className={`text-xs ${error ? "text-destructive font-medium" : ""}`}>
+                        {error || "Select a local git repository to visualize"}
+                    </CardDescription>
                 </div>
                 <Button
-                    variant="outline"
+                    variant="ghost"
                     size="icon"
                     onClick={handleBrowse}
                     title="Browse for repository"
-                    className="hover:bg-primary hover:text-primary-foreground transition-all"
+                    className="h-8 w-8 hover:bg-accent transition-colors"
                 >
                     <FolderOpen className="h-4 w-4" />
                 </Button>
             </CardHeader>
-            <CardContent className="space-y-4 pt-4">
+            <CardContent className="space-y-3 pt-2">
                 <Input
                     placeholder="/path/to/repo"
                     value={repoPath}
                     onChange={(e) => setRepoPath(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleLoad()}
-                    className="bg-background/50 border-border focus:ring-primary"
+                    className={`bg-background/50 border-border focus-visible:ring-1 h-9 text-sm ${
+                        error ? "border-destructive focus-visible:ring-destructive" : "focus-visible:ring-primary"
+                    }`}
                 />
-                <Button onClick={handleLoad} className="w-full h-11 text-base font-semibold shadow-lg shadow-primary/20">
+                <Button onClick={handleLoad} className="w-full h-9 text-sm font-medium">
                     Load Repository
                 </Button>
             </CardContent>

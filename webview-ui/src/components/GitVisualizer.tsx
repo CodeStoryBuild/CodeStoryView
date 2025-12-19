@@ -5,6 +5,7 @@ import type { Core } from "cytoscape";
 import dagre from "cytoscape-dagre";
 import { SearchBar } from "@/components/search-bar";
 import { getVsCodeApi } from "@/lib/vscode";
+import { DiffDialog } from "./DiffDialog";
 
 // Register layout plugin (client-only)
 if (typeof window !== "undefined") {
@@ -32,6 +33,8 @@ interface GitVisualizerProps {
     branch: string;
     onCommitSelect: (commit: any) => void;
     isLoading?: boolean;
+    apiConfiguration?: { provider: string; model: string; apiKey: string } | null;
+    onOpenApiManager?: () => void;
 }
 
 export function GitVisualizer({
@@ -39,12 +42,16 @@ export function GitVisualizer({
     branch,
     onCommitSelect,
     isLoading = false,
+    apiConfiguration = null,
+    onOpenApiManager,
 }: GitVisualizerProps) {
     const [commits, setCommits] = useState<CommitNode[]>([]);
     const [loading, setLoading] = useState(false);
     const cyRef = useRef<Core | null>(null);
     const [cyInstance, setCyInstance] = useState<Core | null>(null);
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [selectedCommit, setSelectedCommit] = useState<CommitNode | null>(null);
+    const [isDiffOpen, setIsDiffOpen] = useState(false);
     const [executingCommits] = useState<Set<string>>(new Set());
     const [newNodeIds] = useState<Set<string>>(new Set());
     const vscode = getVsCodeApi();
@@ -66,6 +73,9 @@ export function GitVisualizer({
             switch (message.command) {
                 case 'displayCommits':
                     setCommits(message.commits || []);
+                    setLoading(false);
+                    break;
+                case 'loadError':
                     setLoading(false);
                     break;
                 case 'displayOutput':
@@ -122,78 +132,65 @@ export function GitVisualizer({
             {
                 selector: "node",
                 style: {
-                    "background-color": "hsl(262, 83%, 64%)",
+                    "background-color": "hsl(215, 20%, 65%)",
                     label: "data(label)",
-                    color: "hsl(262, 83%, 55%)",
-                    "font-family":
-                        'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                    "font-size": 12,
-                    "text-valign": "top",
+                    color: "hsl(215, 20%, 65%)",
+                    "font-family": "inherit",
+                    "font-size": 8,
+                    "text-valign": "bottom",
                     "text-halign": "center",
-                    "text-margin-y": -10,
-                    width: 14,
-                    height: 14,
+                    "text-margin-y": 4,
+                    width: 10,
+                    height: 10,
                     "border-width": 0,
-                    "overlay-opacity": 0.001,
-                    "overlay-padding": 3,
-                    "overlay-color": "transparent",
+                    "overlay-opacity": 0,
                     "text-wrap": "wrap",
-                    "text-max-width": 40,
-                    "text-overflow-wrap": "anywhere",
+                    "text-max-width": 60,
                 },
             },
             {
                 selector: "node:selected",
                 style: {
-                    "border-width": 3,
-                    "border-color": "hsl(262, 83%, 80%)",
-                    width: 16,
-                    height: 16,
+                    "border-width": 2,
+                    "border-color": "hsl(var(--primary))",
+                    "background-color": "hsl(var(--primary))",
+                    width: 12,
+                    height: 12,
                 },
             },
             {
                 selector: 'node[kind = "working"]',
                 style: {
-                    "background-color": "hsl(24, 94%, 80%)",
+                    "background-color": "hsl(24, 94%, 60%)",
                 },
             },
             {
                 selector: "node[isExecuting]",
                 style: {
-                    "border-width": 3,
-                    "border-color": "hsl(142, 76%, 36%)",
-                    "border-style": "solid",
-                    width: 18,
-                    height: 18,
-                },
-            },
-            {
-                selector: "node[isNewNode]",
-                style: {
-                    "background-color": "hsl(24, 94%, 50%)",
                     "border-width": 2,
-                    "border-color": "hsl(24, 94%, 60%)",
+                    "border-color": "hsl(142, 76%, 45%)",
                     "border-style": "solid",
-                    width: 16,
-                    height: 16,
+                    width: 12,
+                    height: 12,
                 },
             },
             {
                 selector: "edge",
                 style: {
-                    width: 1.5,
-                    "line-color": "hsl(215, 20%, 65%)",
-                    "target-arrow-color": "hsl(215, 20%, 65%)",
+                    width: 1,
+                    "line-color": "hsl(215, 20%, 80%)",
+                    "target-arrow-color": "hsl(215, 20%, 80%)",
                     "target-arrow-shape": "triangle",
                     "curve-style": "bezier",
+                    "arrow-scale": 0.6,
                 },
             },
             {
                 selector: "edge:selected",
                 style: {
-                    width: 2.5,
-                    "line-color": "hsl(262, 83%, 64%)",
-                    "target-arrow-color": "hsl(262, 83%, 64%)",
+                    width: 1.5,
+                    "line-color": "hsl(var(--primary))",
+                    "target-arrow-color": "hsl(var(--primary))",
                 },
             },
         ],
@@ -208,8 +205,53 @@ export function GitVisualizer({
         cy.autoungrabify(true);
         cy.userZoomingEnabled(true);
         cy.userPanningEnabled(true);
-        cy.minZoom(0.5);
-        cy.maxZoom(5);
+        cy.minZoom(0.2);
+        cy.maxZoom(2);
+
+        // Limit panning to keep nodes in view
+        let isClamping = false;
+        cy.on('viewport', () => {
+            if (isClamping || cy.nodes().empty()) return;
+            
+            const box = cy.nodes().boundingBox();
+            const pan = cy.pan();
+            const zoom = cy.zoom();
+            const width = cy.width();
+            const height = cy.height();
+
+            // Keep at least a small part of the graph visible
+            const padding = 30; 
+            const minPanX = padding - box.x2 * zoom;
+            const maxPanX = width - padding - box.x1 * zoom;
+            const minPanY = padding - box.y2 * zoom;
+            const maxPanY = height - padding - box.y1 * zoom;
+
+            let newPanX = pan.x;
+            let newPanY = pan.y;
+            let changed = false;
+
+            if (pan.x < minPanX) {
+                newPanX = minPanX;
+                changed = true;
+            } else if (pan.x > maxPanX) {
+                newPanX = maxPanX;
+                changed = true;
+            }
+
+            if (pan.y < minPanY) {
+                newPanY = minPanY;
+                changed = true;
+            } else if (pan.y > maxPanY) {
+                newPanY = maxPanY;
+                changed = true;
+            }
+
+            if (changed) {
+                isClamping = true;
+                cy.pan({ x: newPanX, y: newPanY });
+                isClamping = false;
+            }
+        });
 
         // Basic pulsing animation setup
         let animationFrame: number;
@@ -225,8 +267,8 @@ export function GitVisualizer({
                     const pulse = Math.sin(elapsed / 400) * 0.5 + 0.5;
                     node.style({
                         "border-opacity": 0.3 + pulse * 0.7,
-                        width: 18 * (1 + pulse * 0.3),
-                        height: 18 * (1 + pulse * 0.3),
+                        width: 12 * (1 + pulse * 0.2),
+                        height: 12 * (1 + pulse * 0.2),
                     });
                 });
             } catch (e) {
@@ -247,14 +289,11 @@ export function GitVisualizer({
         if (!cyInstance) return;
         const handleNodeTap = (evt: any) => {
             const commit = commits.find((c) => c.id === evt.target.id());
+            console.log('GitVisualizer: node tapped', commit?.hash);
             if (commit) {
+                setSelectedCommit(commit);
+                setIsDiffOpen(true);
                 onCommitSelect(commit);
-                // Fetch diff for this commit
-                vscode.postMessage({
-                    command: 'fetchDiff',
-                    repoPath,
-                    commitHash: commit.hash
-                });
             }
         };
         cyInstance.on("tap", "node", handleNodeTap);
@@ -290,16 +329,16 @@ export function GitVisualizer({
 
     if (isLoading || loading) {
         return (
-            <div className="flex h-full w-full items-center justify-center bg-background text-muted-foreground">
-                <div className="animate-spin mr-2">⟳</div> Loading commits...
+            <div className="flex h-full w-full items-center justify-center bg-background text-muted-foreground text-xs">
+                <div className="animate-spin mr-2 h-3 w-3 border-b-2 border-primary rounded-full"></div> Loading...
             </div>
         );
     }
 
     if (commits.length === 0) {
         return (
-            <div className="flex h-full w-full items-center justify-center text-muted-foreground bg-background">
-                No repository loaded.
+            <div className="flex h-full w-full items-center justify-center text-muted-foreground bg-background text-xs font-medium tracking-wide opacity-50">
+                NO REPOSITORY LOADED
             </div>
         );
     }
@@ -319,9 +358,9 @@ export function GitVisualizer({
                 <SearchBar
                     commits={commits}
                     onCommitSelect={(commit) => {
-                        if (selectedId !== commit.id) {
-                            setSelectedId(commit.id);
-                        }
+                        setSelectedId(commit.id);
+                        setSelectedCommit(commit);
+                        setIsDiffOpen(true);
                         onCommitSelect(commit);
                         if (cyInstance) {
                             const node = cyInstance.getElementById(commit.id);
@@ -334,6 +373,16 @@ export function GitVisualizer({
                     }}
                 />
             </div>
+
+            <DiffDialog
+                open={isDiffOpen}
+                onOpenChange={setIsDiffOpen}
+                repoPath={repoPath}
+                branch={branch}
+                commit={selectedCommit}
+                apiConfiguration={apiConfiguration}
+                onOpenApiManager={onOpenApiManager}
+            />
         </div>
     );
 }
