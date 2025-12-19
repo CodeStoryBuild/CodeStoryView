@@ -1,71 +1,57 @@
-# codestory-view README
+# Codestory View
 
-This is the README for your extension "codestory-view". After writing up a brief description, we recommend including the following sections.
-
-## Features
-
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
-
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
-
-## Requirements
-
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
-
-## Extension Settings
-
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+A Visual Studio Code extension that visualizes and helps manage Git repositories using the [Codestory CLI](https://cli.codestory.build). Codestory View provides a fast, interactive visual interface for cleaning up your repository history directly inside VS Code.
 
 ---
 
-## Following extension guidelines
+## Demo
 
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
+Watch a short youtube demo of Codestory View — click the thumbnail to play the video.
 
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+[![Demo Video](https://img.youtube.com/vi/ofRYPWpe5Yk/hqdefault.jpg)](https://youtu.be/ofRYPWpe5Yk)
 
-## Working with Markdown
 
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
+---
 
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
+## Key features ✅
 
-## For more information
+- Visualize repository history and branches with an interactive graph
+- Inspect diffs and open file changes in a dedicated dialog
+- Runs the Codestory CLI under the hood to clean repository history
 
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
+---
 
-**Enjoy!**
+## Why use Codestory View
+
+Codestory View is focused on visual repository hygiene — not just seeing history but making it cleaner. It lets you perform the same core workflows as the Codestory CLI (commit, fix, clean) through a visual, interactive interface so you can inspect, split, and fix commits with confidence.
+
+---
+
+## How it maps to the Codestory CLI
+
+The extension mirrors the main Codestory workflows so you can work visually:
+
+- Committing new changes: run `cst commit` → webview helps stage and review grouped changes before committing.
+- Fixing past commits: run `cst fix <commit>` → open a commit in the UI to split or reorder changes visually.
+
+---
+
+## Usage
+
+- Open the **Command Palette** (Ctrl/Cmd+Shift+P) and run `Codestory View: Start` to open the visualizer.
+- Use the branch selector and controls in the webview to navigate branches and commits.
+- Click the diff entries to open the Diff dialog for file-by-file comparisons.
+
+## Troubleshooting
+
+If you run into any issues, please email support@codestory.build
+
+---
+
+## License
+
+The code is licensed under GPLv2 — see `LICENSE` for details.
+
+---
+
+
