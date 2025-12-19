@@ -45,7 +45,7 @@ const PROVIDER_MODELS: Record<string, string[]> = {
   google: ['gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.0-pro'],
   anthropic: ['claude-3-5-sonnet-20240620', 'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
   lmstudio: ['local-model'],
-  cerebras: ['llama3.1-8b', 'llama3.1-70b'],
+  cerebras: ['llama3.1-8b', 'llama-3.3-70b', 'gpt-oss-120b', 'qwen-3-32b', 'qwen-3-235b-a22b-instruct-2507', 'zai-glm-4.6'],
   ollama: ['llama3', 'mistral', 'phi3'],
   sambanova: ['llama3-70b', 'llama3-8b'],
   watsonx: ['granite-13b-chat-v2'],
