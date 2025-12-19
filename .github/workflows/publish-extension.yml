@@ -16,7 +16,24 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
+
+      - name: Show Node/npm versions
+        run: node -v && npm -v
+
+      - name: Cache root npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-cache-${{ hashFiles('package-lock.json') }}
+          restore-keys: ${{ runner.os }}-npm-cache-
+
+      - name: Cache webview node_modules
+        uses: actions/cache@v4
+        with:
+          path: webview-ui/node_modules
+          key: ${{ runner.os }}-webview-node-modules-${{ hashFiles('webview-ui/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-webview-node-modules-
 
       - name: Extract version from tag
         run: |
