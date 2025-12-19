@@ -1,0 +1,72 @@
+name: Publish Extension
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Extract version from tag
+        run: |
+          TAG=${GITHUB_REF##*/}
+          VERSION=${TAG#v}
+          echo "TAG=$TAG" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Show version
+        run: echo "Publishing version $VERSION (from tag $TAG)"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set package.json version
+        run: npm version $VERSION --no-git-tag-version
+
+      - name: Build all
+        run: npm run build:all
+
+    #   - name: Run tests
+    #     run: npm test
+
+      - name: Package .vsix
+        run: npx vsce package
+
+      - name: Publish to Visual Studio Marketplace
+        env:
+          VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
+        run: npx vsce publish --pat $VSCE_TOKEN --packagePath *.vsix
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ env.TAG }}
+          release_name: ${{ env.TAG }}
+          body: Release ${{ env.TAG }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Find generated .vsix
+        run: echo "VSIX_FILE=$(ls *.vsix | head -n 1)" >> $GITHUB_ENV
+
+      - name: Upload .vsix to release
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ env.VSIX_FILE }}
+          asset_name: ${{ env.VSIX_FILE }}
+          asset_content_type: application/octet-stream
