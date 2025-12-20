@@ -3,7 +3,7 @@ name: Publish Extension
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
 
 jobs:
   publish:
@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
 
       - name: Show Node/npm versions
         run: node -v && npm -v
@@ -59,8 +59,8 @@ jobs:
       - name: Build all
         run: npm run build:all
 
-    #   - name: Run tests
-    #     run: npm test
+      #   - name: Run tests
+      #     run: npm test
 
       - name: Package .vsix
         run: npx vsce package
@@ -88,7 +88,7 @@ jobs:
         run: |
           # Finds the first .vsix file in the directory
           VSIX_FILE=$(ls *.vsix | head -n 1)
-          
+
           # Uses GitHub CLI to create a release and attach the file in one go
           gh release create ${{ env.TAG }} \
             --title "${{ env.TAG }}" \
