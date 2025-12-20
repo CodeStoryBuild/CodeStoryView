@@ -1,9 +1,23 @@
-# Change Log
-
-All notable changes to the "codestory-view" extension will be documented in this file.
-
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
 ## [Unreleased]
 
+- Fix: Fix bug where the extension always sets you back to a branch even if you select another one
+
+## V0.1.2
+
+- Security: Obfuscate API key when running commands instead of providing API key as a direct console argument
+- Fix: The extension now reads your vscode theme instead of having its own fixed theme
+- Changed: Update README to be clearer and add a LICENSE
+- Changed: Improve 'Run Config' to have a more clean and easy to use interface
+- Feat: The extension now tracks what branch you are on and automatically reflects the changes
+- Feat: The extension can now pass a '--branch' argument to the codestory executable, that allows you to run changes on a branch you arent on
+- Feat: The extension does not allow you to run the 'cst fix' commmand on commits that are a merge commit or have a merge commit downstream, matching what cst expects.
+ 
+
+## V0.1.1
+
 - Initial release
+- Add: Interactive Git Graph to interact with your commit history
+- Add: Auto Download The Latest 'cst' executable at runtime
+- Add: Support 'cst fix' and 'cst commit' commands
+- Add: Support for configuring all global options that the 'cst' command supports
+- Add: Semantic Search across commit history

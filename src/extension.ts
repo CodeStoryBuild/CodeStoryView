@@ -22,6 +22,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   let activePanel: vscode.WebviewPanel | undefined;
   let repoWatcher: vscode.FileSystemWatcher | undefined;
+  let watchedRepoPath: string | undefined;
   let debounceTimer: NodeJS.Timeout | undefined;
 
   context.subscriptions.push(
@@ -82,6 +83,7 @@ export function activate(context: vscode.ExtensionContext) {
           if (repoWatcher) {
             repoWatcher.dispose();
             repoWatcher = undefined;
+            watchedRepoPath = undefined;
           }
           if (debounceTimer) {
             clearTimeout(debounceTimer);
@@ -318,34 +320,41 @@ export function activate(context: vscode.ExtensionContext) {
                   throw new Error("Please specify a directory path.");
                 }
 
-                // Setup file system watcher for git changes
-                if (repoWatcher) {
-                  repoWatcher.dispose();
-                }
-                if (debounceTimer) {
-                  clearTimeout(debounceTimer);
-                }
-
-                // Watch for any changes in the .git directory
-                const pattern = new vscode.RelativePattern(repoPath, ".git/**");
-                repoWatcher = vscode.workspace.createFileSystemWatcher(pattern);
-
-                const refresh = () => {
+                // Setup file system watcher for git changes if path changed
+                if (watchedRepoPath !== repoPath) {
+                  if (repoWatcher) {
+                    repoWatcher.dispose();
+                  }
                   if (debounceTimer) {
                     clearTimeout(debounceTimer);
                   }
-                  debounceTimer = setTimeout(() => {
-                    if (activePanel) {
-                      activePanel.webview.postMessage({
-                        command: "refreshGraph",
-                      });
-                    }
-                  }, 1000); // 1 second debounce
-                };
 
-                repoWatcher.onDidChange(refresh);
-                repoWatcher.onDidCreate(refresh);
-                repoWatcher.onDidDelete(refresh);
+                  // Watch for any changes in the .git directory
+                  const pattern = new vscode.RelativePattern(
+                    repoPath,
+                    ".git/**",
+                  );
+                  repoWatcher =
+                    vscode.workspace.createFileSystemWatcher(pattern);
+
+                  const refresh = () => {
+                    if (debounceTimer) {
+                      clearTimeout(debounceTimer);
+                    }
+                    debounceTimer = setTimeout(() => {
+                      if (activePanel) {
+                        activePanel.webview.postMessage({
+                          command: "refreshGraph",
+                        });
+                      }
+                    }, 1000); // 1 second debounce
+                  };
+
+                  repoWatcher.onDidChange(refresh);
+                  repoWatcher.onDidCreate(refresh);
+                  repoWatcher.onDidDelete(refresh);
+                  watchedRepoPath = repoPath;
+                }
 
                 panel.webview.postMessage({
                   command: "displayOutput",

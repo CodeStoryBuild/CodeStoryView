@@ -133,7 +133,11 @@ function App() {
           }
           break;
         case "refreshGraph":
-          vscode.postMessage({ command: "loadRepo", directory: repoPath });
+          vscode.postMessage({
+            command: "loadRepo",
+            directory: repoPath,
+            branch: branch,
+          });
           break;
         case "cstStatus":
           setCstStatus(message.status);
@@ -164,7 +168,11 @@ function App() {
               });
             }}
             onReload={() => {
-              vscode.postMessage({ command: "loadRepo", directory: repoPath });
+              vscode.postMessage({
+                command: "loadRepo",
+                directory: repoPath,
+                branch: branch,
+              });
             }}
           />
         </div>
