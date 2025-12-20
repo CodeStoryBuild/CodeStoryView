@@ -9,7 +9,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Required for creating releases
 
     steps:
       - name: Checkout
@@ -20,23 +20,6 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Show Node/npm versions
-        run: node -v && npm -v
-
-      - name: Cache root npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-cache-${{ hashFiles('package-lock.json') }}
-          restore-keys: ${{ runner.os }}-npm-cache-
-
-      - name: Cache webview node_modules
-        uses: actions/cache@v4
-        with:
-          path: webview-ui/node_modules
-          key: ${{ runner.os }}-webview-node-modules-${{ hashFiles('webview-ui/package-lock.json') }}
-          restore-keys: ${{ runner.os }}-webview-node-modules-
-
       - name: Extract version from tag
         run: |
           TAG=${GITHUB_REF##*/}
@@ -44,53 +27,34 @@ jobs:
           echo "TAG=$TAG" >> $GITHUB_ENV
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
-      - name: Show version
-        run: echo "Publishing version $VERSION (from tag $TAG)"
-
       - name: Install dependencies
-        run: npm ci
-
-      - name: Install webview dependencies
-        run: npm ci --prefix webview-ui
+        run: |
+          npm ci
+          npm ci --prefix webview-ui
 
       - name: Set package.json version
         run: npm version $VERSION --no-git-tag-version
 
-      - name: Build all
-        run: npm run build:all
-
-      #   - name: Run tests
-      #     run: npm test
-
-      - name: Package .vsix
-        run: npx vsce package
+      - name: Build and Package
+        run: |
+          npm run build:all
+          npx vsce package
 
       - name: Publish to Visual Studio Marketplace
         env:
           VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
+        # continue-on-error: true # Optional: Uncomment if you want the GitHub Release to happen even if Marketplace fails
         run: npx vsce publish --pat $VSCE_TOKEN --packagePath *.vsix
-
-      - name: Create GitHub Release
-        id: create_release
-        uses: actions/create-release@v1
-        with:
-          tag_name: ${{ env.TAG }}
-          release_name: ${{ env.TAG }}
-          body: Release ${{ env.TAG }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release and Upload VSIX
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Finds the first .vsix file in the directory
           VSIX_FILE=$(ls *.vsix | head -n 1)
-
-          # Uses GitHub CLI to create a release and attach the file in one go
+          
+          # We use --clobber so if you delete a release and re-run the action, it can overwrite
           gh release create ${{ env.TAG }} \
             --title "${{ env.TAG }}" \
             --notes "Release for version ${{ env.VERSION }}" \
+            --clobber \
             "$VSIX_FILE"
