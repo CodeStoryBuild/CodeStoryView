@@ -12,3 +12,33 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+
+# Exclude repository metadata and CI config
+.git/**
+.github/**
+
+# Exclude webview UI sources and their dependencies — built webview artifacts are copied to ./dist/webview and should be included
+webview-ui/**
+webview-ui/node_modules/**
+webview-ui/dist/**
+
+
+# Logs, caches, packs, lockfiles, OS files
+*.log
+*.tgz
+*.zip
+.DS_Store
+Thumbs.db
+coverage/**
+test/**
+
+# Environment and secrets
+.env
+.env.*
+*.pem
+*.p12
+
+# Package manager lockfiles (not required in vsix)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

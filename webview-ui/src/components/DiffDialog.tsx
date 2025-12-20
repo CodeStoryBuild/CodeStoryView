@@ -30,7 +30,11 @@ export function DiffDialog({
   repoPath: string;
   branch: string;
   commit: any | null;
-  apiConfiguration?: { provider: string; model: string; globalConfig: Record<string, any> } | null;
+  apiConfiguration?: {
+    provider: string;
+    model: string;
+    globalConfig: Record<string, any>;
+  } | null;
   onOpenApiManager?: () => void;
   onExecute?: (hash: string) => void;
 }) {
@@ -38,7 +42,9 @@ export function DiffDialog({
   const [error, setError] = useState<string | null>(null);
   const vscode = getVsCodeApi();
 
-  const [view, setView] = useState<"line-by-line" | "side-by-side">("line-by-line");
+  const [view, setView] = useState<"line-by-line" | "side-by-side">(
+    "line-by-line",
+  );
   const [rawDiff, setRawDiff] = useState<string>("");
   const [localApiConfiguration, setLocalApiConfiguration] = useState<{
     provider: string;
@@ -46,6 +52,12 @@ export function DiffDialog({
     globalConfig: Record<string, any>;
   } | null>(apiConfiguration || null);
   const [isExecuting, setIsExecuting] = useState(false);
+
+  const isRoot =
+    commit && (commit.isRoot || !commit.parents || commit.parents.length === 0);
+  const isMerge = commit && commit.isMerge;
+  const isMergeAncestor = commit && commit.isMergeAncestor;
+  const isIneligible = isRoot || isMerge || isMergeAncestor;
 
   // Handle API configuration changes
   const handleApiConfigurationChange = (config: {
@@ -66,9 +78,9 @@ export function DiffDialog({
       setLoading(true);
       setError(null);
       vscode.postMessage({
-        command: 'fetchDiff',
+        command: "fetchDiff",
         repoPath,
-        commitHash: commit.hash
+        commitHash: commit.hash,
       });
     }
   }, [open, commit, repoPath, vscode]);
@@ -76,7 +88,10 @@ export function DiffDialog({
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
-      if (message.command === 'displayDiff' && message.commitHash === commit?.hash) {
+      if (
+        message.command === "displayDiff" &&
+        message.commitHash === commit?.hash
+      ) {
         try {
           setRawDiff(message.diff);
           setLoading(false);
@@ -84,13 +99,13 @@ export function DiffDialog({
           setError("Failed to parse diff");
           setLoading(false);
         }
-      } else if (message.command === 'resetExecuting') {
+      } else if (message.command === "resetExecuting") {
         setIsExecuting(false);
       }
     };
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
   }, [commit]);
 
   // Render diff HTML when view or rawDiff changes
@@ -99,9 +114,9 @@ export function DiffDialog({
     try {
       return renderDiff(rawDiff, {
         drawFileList: true,
-        matching: 'lines',
+        matching: "lines",
         outputFormat: view,
-        colorScheme: 'dark' as any,
+        colorScheme: "dark" as any,
       });
     } catch (err) {
       console.error("Failed to render diff", err);
@@ -119,7 +134,11 @@ export function DiffDialog({
     onOpenChange(false);
 
     // Require provider and model separately. API key is optional.
-    if (!localApiConfiguration || !localApiConfiguration.model || !localApiConfiguration.provider) {
+    if (
+      !localApiConfiguration ||
+      !localApiConfiguration.model ||
+      !localApiConfiguration.provider
+    ) {
       if (onOpenApiManager) onOpenApiManager();
       return;
     }
@@ -139,8 +158,9 @@ export function DiffDialog({
     };
 
     const payload: any = {
-      command: isCommit ? 'runVibeCommandCommit' : 'runVibeCommandFix',
+      command: isCommit ? "runVibeCommandCommit" : "runVibeCommandFix",
       repoPath,
+      branch,
       globalArgs,
     };
 
@@ -154,18 +174,47 @@ export function DiffDialog({
     vscode.postMessage(payload);
   };
 
-
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent fullScreen className="flex flex-col p-0 gap-0 overflow-hidden bg-background border-border shadow-2xl">
+        <DialogContent
+          fullScreen
+          className="flex flex-col p-0 gap-0 overflow-hidden bg-background border-border shadow-2xl"
+        >
           <DialogHeader className="p-4 border-b border-border shrink-0 bg-muted/20 pr-12">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-mono text-[10px] h-5 px-1.5">
+                  <Badge
+                    variant="outline"
+                    className="bg-primary/5 text-primary border-primary/20 font-mono text-[10px] h-5 px-1.5"
+                  >
                     {commit?.hash?.substring(0, 7)}
                   </Badge>
+                  {isRoot && (
+                    <Badge
+                      variant="destructive"
+                      className="text-[10px] h-5 px-1.5"
+                    >
+                      Root
+                    </Badge>
+                  )}
+                  {isMerge && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] h-5 px-1.5 border-warning text-warning"
+                    >
+                      Merge
+                    </Badge>
+                  )}
+                  {isMergeAncestor && (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] h-5 px-1.5 border-warning/80 text-warning/80"
+                    >
+                      Merge-Downstream
+                    </Badge>
+                  )}
                   <DialogTitle className="text-base font-semibold line-clamp-1">
                     {commit?.message || "Commit Details"}
                   </DialogTitle>
@@ -173,7 +222,9 @@ export function DiffDialog({
                 <DialogDescription className="flex items-center gap-4 text-muted-foreground text-[11px]">
                   <span className="flex items-center gap-1">
                     <Clock className="h-3 w-3 opacity-70" />
-                    {commit?.date ? format(new Date(commit.date), "MMM d, yyyy HH:mm") : "Unknown date"}
+                    {commit?.date
+                      ? format(new Date(commit.date), "MMM d, yyyy HH:mm")
+                      : "Unknown date"}
                   </span>
                   <span className="flex items-center gap-1">
                     <GitCommit className="h-3 w-3 opacity-70" />
@@ -220,7 +271,7 @@ export function DiffDialog({
                   <Save className="h-3 w-3" />
                   Commit
                 </Button>
-              ) : (
+              ) : !isIneligible ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -228,10 +279,12 @@ export function DiffDialog({
                   onClick={() => handleVibeCommand("expand")}
                   disabled={isExecuting}
                 >
-                  <RotateCcw className={`h-3 w-3 ${isExecuting ? "animate-spin" : ""}`} />
+                  <RotateCcw
+                    className={`h-3 w-3 ${isExecuting ? "animate-spin" : ""}`}
+                  />
                   Fix
                 </Button>
-              )}
+              ) : null}
             </div>
           </DialogHeader>
 
@@ -246,17 +299,19 @@ export function DiffDialog({
                 {error}
               </div>
             ) : (
-              <div 
+              <div
                 key={view}
                 className="diff-container text-xs"
-                dangerouslySetInnerHTML={{ __html: diffHtml }} 
+                dangerouslySetInnerHTML={{ __html: diffHtml }}
               />
             )}
           </div>
         </DialogContent>
       </Dialog>
 
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
         .diff-container .d2h-code-linenumber,
         .diff-container .d2h-code-side-linenumber {
           position: sticky !important;
@@ -282,7 +337,9 @@ export function DiffDialog({
         .diff-container .d2h-file-name {
           font-size: 11px !important;
         }
-      ` }} />
+      `,
+        }}
+      />
     </>
   );
 }

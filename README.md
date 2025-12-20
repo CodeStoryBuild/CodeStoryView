@@ -1,57 +1,43 @@
 # Codestory View
 
-A Visual Studio Code extension that visualizes and helps manage Git repositories using the [Codestory CLI](https://cli.codestory.build). Codestory View provides a fast, interactive visual interface for cleaning up your repository history directly inside VS Code.
+Codestory View is a Visual Studio Code extension that helps you turn large, messy commits into a clean, well-structured commit history using the Codestory CLI (https://cli.codestory.build).
+
+We automatically download the Codestory CLI on your first run. This extension exposes its functionality through a simple, focused UI, includes an interactive webview graph, semantic search, and direct CLI integration to clean and split large commits. Think of Codestory View as a desktop UI for the Codestory CLI — similar to how GitHub Desktop provides a UI for Git.
 
 ---
 
 ## Demo
 
-Watch a short youtube demo of Codestory View — click the thumbnail to play the video.
+Watch a short demonstration showing how the extension converts a large working directory into a series of clean commits:
 
-[![Demo Video](https://img.youtube.com/vi/ofRYPWpe5Yk/hqdefault.jpg)](https://youtu.be/ofRYPWpe5Yk)
-
-
----
-
-## Key features ✅
-
-- Visualize repository history and branches with an interactive graph
-- Inspect diffs and open file changes in a dedicated dialog
-- Runs the Codestory CLI under the hood to clean repository history
+[![Demo Video](https://img.youtube.com/vi/RjSJ25P0LhY/hqdefault.jpg)](https://youtu.be/RjSJ25P0LhY)
 
 ---
 
-## Why use Codestory View
+## Key Features
 
-Codestory View is focused on visual repository hygiene — not just seeing history but making it cleaner. It lets you perform the same core workflows as the Codestory CLI (commit, fix, clean) through a visual, interactive interface so you can inspect, split, and fix commits with confidence.
-
----
-
-## How it maps to the Codestory CLI
-
-The extension mirrors the main Codestory workflows so you can work visually:
-
-- Committing new changes: run `cst commit` → webview helps stage and review grouped changes before committing.
-- Fixing past commits: run `cst fix <commit>` → open a commit in the UI to split or reorder changes visually.
+- Interactive graph to visualize branches and commit history
+- Semantic search for finding commits quickly
+- Convert existing large, messy commits into a clean, linearized commit history (rewrites history, use with care)
+- Automatically split a large working directory into a series of logical commits
 
 ---
 
-## Usage
+## Quick Start
 
-- Open the **Command Palette** (Ctrl/Cmd+Shift+P) and run `Codestory View: Start` to open the visualizer.
-- Use the branch selector and controls in the webview to navigate branches and commits.
-- Click the diff entries to open the Diff dialog for file-by-file comparisons.
+1. Open the **Command Palette** (Ctrl/Cmd+Shift+P) and run **Codestory View: Start**.
+2. If your workspace is a Git repository, it will be selected automatically; otherwise, pick a folder.
+3. Choose a branch to inspect.
+4. Configure model and API settings if required (API key is optional; local models are supported).
+5. Select the commits or working-directory changes you want to clean up and click **Fix** or **Commit** to run the Codestory CLI operations.
 
-## Troubleshooting
-
-If you run into any issues, please email support@codestory.build
+> Important: Fix commands rewrite Git history (similar to `git rebase`). Make sure you understand the implications before applying fixes to shared branches.
 
 ---
+
 
 ## License
 
-The code is licensed under GPLv2 — see `LICENSE` for details.
+This project is licensed under GPLv2. See `LICENSE.txt` for details.
 
 ---
-
-

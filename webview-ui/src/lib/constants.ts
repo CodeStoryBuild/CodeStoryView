@@ -115,6 +115,18 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
   xai: ["grok-4.1", "grok-4.1-thinking", "grok-4.1-fast", "grok-2-vision"],
 };
 
+export const GET_KEY_LINKS: Record<string, string> = {
+  openai: "https://platform.openai.com/api-keys",
+  anthropic: "https://console.anthropic.com/settings/keys",
+  google: "https://aistudio.google.com/app/apikey",
+  groq: "https://console.groq.com/keys",
+  mistral: "https://console.mistral.ai/api-keys/",
+  deepseek: "https://platform.deepseek.com/api_keys",
+  together: "https://api.together.xyz/settings/api-keys",
+  fireworks: "https://fireworks.ai/account/api-keys",
+  cohere: "https://dashboard.cohere.com/api-keys",
+};
+
 export type ConfigOptionType = "string" | "number" | "boolean" | "literal";
 
 export interface ConfigOption {

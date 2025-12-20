@@ -9,390 +9,538 @@ import { DiffDialog } from "./DiffDialog";
 
 // Register layout plugin (client-only)
 if (typeof window !== "undefined") {
-    try {
-        cytoscape.use(dagre);
-    } catch {
-        // no-op if already registered
-    }
+  try {
+    cytoscape.use(dagre);
+  } catch {
+    // no-op if already registered
+  }
 }
 
 interface CommitNode {
-    id: string;
-    label: string;
-    hash: string;
-    message: string;
-    author: string;
-    date: string;
-    parents?: string[];
-    kind?: string;
-    isWorkingDir?: boolean;
+  id: string;
+  label: string;
+  hash: string;
+  message: string;
+  author: string;
+  date: string;
+  parents?: string[];
+  kind?: string;
+  isWorkingDir?: boolean;
+  isMerge?: boolean;
+  isMergeAncestor?: boolean;
+  isRoot?: boolean;
 }
 
 interface GitVisualizerProps {
-    repoPath: string;
-    branch: string;
-    onCommitSelect: (commit: any) => void;
-    isLoading?: boolean;
-    apiConfiguration?: { provider: string; model: string; globalConfig: Record<string, any> } | null;
-    onOpenApiManager?: () => void;
+  repoPath: string;
+  branch: string;
+  onCommitSelect: (commit: any) => void;
+  isLoading?: boolean;
+  apiConfiguration?: {
+    provider: string;
+    model: string;
+    globalConfig: Record<string, any>;
+  } | null;
+  onOpenApiManager?: () => void;
 }
 
 export function GitVisualizer({
-    repoPath,
-    branch,
-    onCommitSelect,
-    isLoading = false,
-    apiConfiguration = null,
-    onOpenApiManager,
+  repoPath,
+  branch,
+  onCommitSelect,
+  isLoading = false,
+  apiConfiguration = null,
+  onOpenApiManager,
 }: GitVisualizerProps) {
-    const [commits, setCommits] = useState<CommitNode[]>([]);
-    const [loading, setLoading] = useState(false);
-    const cyRef = useRef<Core | null>(null);
-    const [cyInstance, setCyInstance] = useState<Core | null>(null);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [selectedCommit, setSelectedCommit] = useState<CommitNode | null>(null);
-    const [isDiffOpen, setIsDiffOpen] = useState(false);
-    const [executingCommits, setExecutingCommits] = useState<Set<string>>(new Set());
-    const [newNodeIds] = useState<Set<string>>(new Set());
-    const vscode = getVsCodeApi();
+  const [commits, setCommits] = useState<CommitNode[]>([]);
+  const [loading, setLoading] = useState(false);
+  const cyRef = useRef<Core | null>(null);
+  const [cyInstance, setCyInstance] = useState<Core | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedCommit, setSelectedCommit] = useState<CommitNode | null>(null);
+  const [isDiffOpen, setIsDiffOpen] = useState(false);
+  const [executingCommits, setExecutingCommits] = useState<Set<string>>(
+    new Set(),
+  );
+  const [executionTime, setExecutionTime] = useState<number>(0);
+  const newNodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pulseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const vscode = getVsCodeApi();
 
-    const fetchCommits = useCallback(() => {
-        if (!repoPath) return;
-        setLoading(true);
-        vscode.postMessage({ command: 'loadRepo', directory: repoPath, branch });
-    }, [repoPath, branch, vscode]);
+  const fetchCommits = useCallback(() => {
+    if (!repoPath) return;
+    setLoading(true);
+    const message: any = { command: "loadRepo", directory: repoPath };
+    if (branch) message.branch = branch;
+    vscode.postMessage(message);
+  }, [repoPath, branch, vscode]);
 
-    useEffect(() => {
-        if (repoPath && branch) fetchCommits();
-    }, [repoPath, branch, fetchCommits]);
+  useEffect(() => {
+    if (repoPath) fetchCommits();
+  }, [repoPath, branch, fetchCommits]);
 
-    // Handle messages from the extension
-    useEffect(() => {
-        const handleMessage = (event: MessageEvent) => {
-            const message = event.data;
-            switch (message.command) {
-                case 'displayCommits':
-                    setCommits(message.commits || []);
-                    setLoading(false);
-                    break;
-                case 'loadError':
-                    setLoading(false);
-                    break;
-                case 'displayOutput':
-                    // console.log(message.data);
-                    break;
-                case 'resetExecuting':
-                    setExecutingCommits(new Set());
-                    break;
+  // Handle messages from the extension
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const message = event.data;
+      switch (message.command) {
+        case "displayCommits":
+          {
+            const incoming: CommitNode[] = message.commits || [];
+
+            // Identify merge commits and their ancestors
+            const mergeCommits = new Set<string>();
+            for (const c of incoming) {
+              if (c.parents && c.parents.length > 1) {
+                mergeCommits.add(c.id);
+              }
             }
-        };
 
-        window.addEventListener('message', handleMessage);
-        return () => window.removeEventListener('message', handleMessage);
-    }, []);
-
-    const elements = useMemo(() => {
-        if (!commits?.length) return [];
-        const ids = new Set(commits.map((c) => c.id));
-        const nodes = commits.map((c, index) => ({
-            data: {
-                id: c.id,
-                label: c.label,
-                index: index,
-                kind: (c as any).kind,
-                ...(executingCommits.has(c.hash) ? { isExecuting: true } : {}),
-                ...(newNodeIds.has(c.id) ? { isNewNode: true } : {}),
-            },
-        }));
-        const edges: any[] = [];
-        for (const child of commits) {
-            for (const parent of child.parents || []) {
-                if (ids.has(parent)) {
-                    const id = `${parent}->${child.id}`;
-                    edges.push({ data: { id, source: parent, target: child.id } });
+            const mergeAncestors = new Set<string>();
+            const findAncestors = (commitId: string) => {
+              const commit = incoming.find((c) => c.id === commitId);
+              if (!commit || !commit.parents) return;
+              for (const parentId of commit.parents) {
+                if (!mergeAncestors.has(parentId)) {
+                  mergeAncestors.add(parentId);
+                  findAncestors(parentId);
                 }
-            }
-        }
-        return [...nodes, ...edges];
-    }, [commits, executingCommits, newNodeIds]);
+              }
+            };
 
-    const layout = useMemo(
-        () => ({
-            name: "dagre",
-            rankDir: "LR",
-            nodeSep: 35,
-            edgeSep: 20,
-            rankSep: 60,
-            fit: false,
-            padding: 30,
-            animate: false,
-        }),
-        [],
-    );
-
-    const stylesheet = useMemo(
-        () => [
-            {
-                selector: "node",
-                style: {
-                    "background-color": "hsl(215, 20%, 65%)",
-                    label: "data(label)",
-                    color: "hsl(215, 20%, 65%)",
-                    "font-family": "inherit",
-                    "font-size": 8,
-                    "text-valign": "bottom",
-                    "text-halign": "center",
-                    "text-margin-y": 4,
-                    width: 10,
-                    height: 10,
-                    "border-width": 0,
-                    "overlay-opacity": 0,
-                    "text-wrap": "wrap",
-                    "text-max-width": 60,
-                },
-            },
-            {
-                selector: "node:selected",
-                style: {
-                    "border-width": 2,
-                    "border-color": "hsl(var(--primary))",
-                    "background-color": "hsl(var(--primary))",
-                    width: 12,
-                    height: 12,
-                },
-            },
-            {
-                selector: 'node[kind = "working"]',
-                style: {
-                    "background-color": "hsl(24, 94%, 60%)",
-                },
-            },
-            {
-                selector: "node[isExecuting]",
-                style: {
-                    "border-width": 2,
-                    "border-color": "hsl(142, 76%, 45%)",
-                    "border-style": "solid",
-                    width: 12,
-                    height: 12,
-                },
-            },
-            {
-                selector: "edge",
-                style: {
-                    width: 1,
-                    "line-color": "hsl(215, 20%, 80%)",
-                    "target-arrow-color": "hsl(215, 20%, 80%)",
-                    "target-arrow-shape": "triangle",
-                    "curve-style": "bezier",
-                    "arrow-scale": 0.6,
-                },
-            },
-            {
-                selector: "edge:selected",
-                style: {
-                    width: 1.5,
-                    "line-color": "hsl(var(--primary))",
-                    "target-arrow-color": "hsl(var(--primary))",
-                },
-            },
-        ],
-        [],
-    );
-
-    const onCyInit = (cy: Core) => {
-        cyRef.current = cy;
-        setCyInstance(cy);
-        cy.resize();
-        cy.boxSelectionEnabled(false);
-        cy.autoungrabify(true);
-        cy.userZoomingEnabled(true);
-        cy.userPanningEnabled(true);
-        cy.minZoom(0.2);
-        cy.maxZoom(2);
-
-        // Limit panning to keep nodes in view
-        let isClamping = false;
-        cy.on('viewport', () => {
-            if (isClamping || cy.nodes().empty()) return;
-            
-            const box = cy.nodes().boundingBox();
-            const pan = cy.pan();
-            const zoom = cy.zoom();
-            const width = cy.width();
-            const height = cy.height();
-
-            // Keep at least a small part of the graph visible
-            const padding = 30; 
-            const minPanX = padding - box.x2 * zoom;
-            const maxPanX = width - padding - box.x1 * zoom;
-            const minPanY = padding - box.y2 * zoom;
-            const maxPanY = height - padding - box.y1 * zoom;
-
-            let newPanX = pan.x;
-            let newPanY = pan.y;
-            let changed = false;
-
-            if (pan.x < minPanX) {
-                newPanX = minPanX;
-                changed = true;
-            } else if (pan.x > maxPanX) {
-                newPanX = maxPanX;
-                changed = true;
+            for (const mergeId of mergeCommits) {
+              const mergeCommit = incoming.find((c) => c.id === mergeId);
+              if (mergeCommit && mergeCommit.parents) {
+                for (const parentId of mergeCommit.parents) {
+                  if (!mergeAncestors.has(parentId)) {
+                    mergeAncestors.add(parentId);
+                    findAncestors(parentId);
+                  }
+                }
+              }
             }
 
-            if (pan.y < minPanY) {
-                newPanY = minPanY;
-                changed = true;
-            } else if (pan.y > maxPanY) {
-                newPanY = maxPanY;
-                changed = true;
-            }
+            const processed = incoming.map((c) => ({
+              ...c,
+              isMerge: mergeCommits.has(c.id),
+              isMergeAncestor: mergeAncestors.has(c.id),
+              isRoot: !c.parents || c.parents.length === 0,
+            }));
 
-            if (changed) {
-                isClamping = true;
-                cy.pan({ x: newPanX, y: newPanY });
-                isClamping = false;
-            }
-        });
+            setCommits(processed);
 
-        // Basic pulsing animation setup
-        let animationFrame: number;
-        const startTime = Date.now();
-        let isRunning = true;
+            setLoading(false);
+          }
+          break;
+        case "loadError":
+          setLoading(false);
+          break;
+        case "displayOutput":
+          // console.log(message.data);
+          break;
+        case "resetExecuting":
+          setExecutingCommits(new Set());
+          setExecutionTime(0);
 
-        const animatePulsing = () => {
-            if (!isRunning || cy.destroyed()) return;
-            const elapsed = Date.now() - startTime;
+          // Clear any pulse timeout
+          if (pulseTimeoutRef.current) {
+            clearTimeout(pulseTimeoutRef.current);
+            pulseTimeoutRef.current = null;
+          }
 
-            try {
-                cy.nodes("[isExecuting]").forEach((node: any) => {
-                    const pulse = Math.sin(elapsed / 400) * 0.5 + 0.5;
-                    node.style({
-                        "border-opacity": 0.3 + pulse * 0.7,
-                        width: 12 * (1 + pulse * 0.2),
-                        height: 12 * (1 + pulse * 0.2),
-                    });
-                });
-            } catch (e) {
-                isRunning = false;
-                return;
-            }
-            animationFrame = requestAnimationFrame(animatePulsing);
-        };
-
-        animatePulsing();
-        (cy as any).__animationCleanup = () => {
-            isRunning = false;
-            if (animationFrame) cancelAnimationFrame(animationFrame);
-        };
+          // Reset node data and styles immediately
+          if (cyRef.current) {
+            cyRef.current.nodes().forEach((node: any) => {
+              node.data("isExecuting", "false");
+              node.removeStyle();
+              node.removeClass("was-pulsing");
+            });
+          }
+          break;
+      }
     };
 
-    useEffect(() => {
-        if (!cyInstance) return;
-        const handleNodeTap = (evt: any) => {
-            const commit = commits.find((c) => c.id === evt.target.id());
-            console.log('GitVisualizer: node tapped', commit?.hash);
-            if (commit) {
-                setSelectedCommit(commit);
-                setIsDiffOpen(true);
-                onCommitSelect(commit);
-            }
-        };
-        cyInstance.on("tap", "node", handleNodeTap);
-        return () => {
-            if (cyInstance && !cyInstance.destroyed()) cyInstance.off("tap", "node", handleNodeTap);
-        };
-    }, [commits, onCommitSelect, cyInstance, repoPath, vscode]);
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
 
-    useEffect(() => {
-        return () => {
-            const cy = cyRef.current;
-            if (cy && (cy as any).__animationCleanup) (cy as any).__animationCleanup();
-            cyRef.current = null;
-        };
-    }, []);
+  const elements = useMemo(() => {
+    if (!commits?.length) return [];
+    const ids = new Set(commits.map((c) => c.id));
+    const nodes = commits.map((c, index) => {
+      let label = c.label;
+      return {
+        data: {
+          id: c.id,
+          label: label,
+          index: index,
+          kind: (c as any).kind,
+          isMerge: c.isMerge,
+          isMergeAncestor: c.isMergeAncestor,
+          isRoot: c.isRoot,
+          ...(executingCommits.has(c.hash) ? { isExecuting: "true" } : {}),
+        },
+      };
+    });
+    const edges: any[] = [];
+    for (const child of commits) {
+      for (const parent of child.parents || []) {
+        if (ids.has(parent)) {
+          const id = `${parent}->${child.id}`;
+          edges.push({ data: { id, source: parent, target: child.id } });
+        }
+      }
+    }
+    return [...nodes, ...edges];
+  }, [commits, executingCommits]);
 
-    // Layout runner
-    useEffect(() => {
-        if (!cyInstance || !elements.length) return;
-        const frame = requestAnimationFrame(() => {
-            if (!cyInstance || cyInstance.destroyed()) return;
-            try {
-                const l = cyInstance.layout(layout as any);
-                if (l && typeof l.run === "function") {
-                    l.run();
-                    const recentNodes = cyInstance.nodes("[index < 10]");
-                    cyInstance.fit(recentNodes.nonempty() ? recentNodes : undefined, 30);
-                }
-            } catch { }
+  const layout = useMemo(
+    () => ({
+      name: "dagre",
+      rankDir: "LR",
+      nodeSep: 35,
+      edgeSep: 20,
+      rankSep: 60,
+      fit: false,
+      padding: 30,
+      animate: false,
+    }),
+    [],
+  );
+
+  const [themeColors, setThemeColors] = useState({
+    foreground: "#888888",
+    background: "#1e1e1e",
+    primary: "#007acc",
+    added: "#28a745",
+    modified: "#ffc107",
+  });
+
+  useEffect(() => {
+    const updateColors = () => {
+      const style = window.getComputedStyle(document.body);
+      setThemeColors({
+        foreground:
+          style.getPropertyValue("--vscode-editor-foreground").trim() ||
+          "#888888",
+        background:
+          style.getPropertyValue("--vscode-editor-background").trim() ||
+          "#1e1e1e",
+        primary:
+          style.getPropertyValue("--vscode-button-background").trim() ||
+          "#007acc",
+        added:
+          style
+            .getPropertyValue("--vscode-gitDecoration-addedResourceForeground")
+            .trim() || "#28a745",
+        modified:
+          style
+            .getPropertyValue(
+              "--vscode-gitDecoration-modifiedResourceForeground",
+            )
+            .trim() || "#ffc107",
+      });
+    };
+
+    updateColors();
+    const observer = new MutationObserver(updateColors);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  const stylesheet = useMemo(
+    () => [
+      {
+        selector: "node",
+        style: {
+          "background-color": themeColors.foreground,
+          label: "data(label)",
+          color: themeColors.foreground,
+          "font-family":
+            'var(--vscode-editor-font-family, "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace)',
+          "font-size": 10,
+          "text-valign": "bottom",
+          "text-halign": "center",
+          "text-margin-y": 2,
+          width: 12,
+          height: 12,
+          "border-width": 0,
+          "overlay-opacity": 0,
+          "overlay-shape": "ellipse",
+          "text-wrap": "wrap",
+          "text-max-width": 80,
+        },
+      },
+      {
+        selector: "node:selected",
+        style: {
+          "border-width": 2,
+          "border-color": themeColors.primary,
+          "background-color": themeColors.primary,
+          width: 12,
+          height: 12,
+        },
+      },
+      {
+        selector: 'node[kind = "working"]',
+        style: {
+          "background-color": themeColors.modified,
+        },
+      },
+      {
+        selector: 'node[isExecuting = "true"]',
+        style: {
+          "border-width": 2,
+          "border-color": themeColors.added,
+          "border-style": "solid",
+        },
+      },
+      {
+        selector: "edge",
+        style: {
+          width: 1,
+          "line-color": themeColors.foreground,
+          "line-opacity": 0.3,
+          "target-arrow-color": themeColors.foreground,
+          "target-arrow-shape": "triangle",
+          "curve-style": "bezier",
+          "arrow-scale": 0.6,
+        },
+      },
+      {
+        selector: "edge:selected",
+        style: {
+          width: 1.5,
+          "line-color": themeColors.primary,
+          "target-arrow-color": themeColors.primary,
+        },
+      },
+    ],
+    [themeColors],
+  );
+
+  const onCyInit = (cy: Core) => {
+    cyRef.current = cy;
+    setCyInstance(cy);
+    cy.resize();
+    cy.boxSelectionEnabled(false);
+    cy.autoungrabify(true);
+    cy.userZoomingEnabled(true);
+    cy.userPanningEnabled(true);
+    cy.minZoom(0.2);
+    cy.maxZoom(2);
+
+    // Limit panning to keep nodes in view
+    let isClamping = false;
+    cy.on("viewport", () => {
+      if (isClamping || cy.nodes().empty()) return;
+
+      const box = cy.nodes().boundingBox();
+      const pan = cy.pan();
+      const zoom = cy.zoom();
+      const width = cy.width();
+      const height = cy.height();
+
+      // Keep at least a small part of the graph visible
+      const padding = 30;
+      const minPanX = padding - box.x2 * zoom;
+      const maxPanX = width - padding - box.x1 * zoom;
+      const minPanY = padding - box.y2 * zoom;
+      const maxPanY = height - padding - box.y1 * zoom;
+
+      let newPanX = pan.x;
+      let newPanY = pan.y;
+      let changed = false;
+
+      if (pan.x < minPanX) {
+        newPanX = minPanX;
+        changed = true;
+      } else if (pan.x > maxPanX) {
+        newPanX = maxPanX;
+        changed = true;
+      }
+
+      if (pan.y < minPanY) {
+        newPanY = minPanY;
+        changed = true;
+      } else if (pan.y > maxPanY) {
+        newPanY = maxPanY;
+        changed = true;
+      }
+
+      if (changed) {
+        isClamping = true;
+        cy.pan({ x: newPanX, y: newPanY });
+        isClamping = false;
+      }
+    });
+
+    // Basic pulsing animation setup
+    let animationFrame: number;
+    let startTime = Date.now();
+    let isRunning = true;
+
+    const animatePulsing = () => {
+      if (!isRunning || cy.destroyed()) return;
+
+      const currentTime = Date.now();
+      const elapsed = currentTime - startTime;
+
+      try {
+        // Clean up nodes that stopped pulsing (only those with the marker class)
+        cy.nodes(".was-pulsing")
+          .filter((node: any) => node.data("isExecuting") !== "true")
+          .forEach((node: any) => {
+            node.removeStyle();
+            node.removeClass("was-pulsing");
+          });
+
+        // Pulse executing nodes using the reference logic
+        cy.nodes('[isExecuting = "true"]').forEach((node: any) => {
+          const pulse = Math.sin(elapsed / 400) * 0.5 + 0.5; // 0 to 1
+          const opacity = 0.3 + pulse * 0.7; // 0.3 to 1.0
+          const scale = 1 + pulse * 0.3; // 1.0 to 1.3
+
+          node.style({
+            "border-opacity": opacity,
+            width: 18 * scale,
+            height: 18 * scale,
+          });
+          node.addClass("was-pulsing");
         });
-        return () => cancelAnimationFrame(frame);
-    }, [elements, layout, commits, cyInstance]);
+      } catch (e) {
+        isRunning = false;
+        return;
+      }
+      animationFrame = requestAnimationFrame(animatePulsing);
+    };
 
-    if (isLoading || loading) {
-        return (
-            <div className="flex h-full w-full items-center justify-center bg-background text-muted-foreground text-xs">
-                <div className="animate-spin mr-2 h-3 w-3 border-b-2 border-primary rounded-full"></div> Loading...
-            </div>
-        );
-    }
+    animatePulsing();
+    (cy as any).__animationCleanup = () => {
+      isRunning = false;
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+    };
+  };
 
-    if (commits.length === 0) {
-        return (
-            <div className="flex h-full w-full items-center justify-center text-muted-foreground bg-background text-xs font-medium tracking-wide opacity-50">
-                NO REPOSITORY LOADED
-            </div>
-        );
-    }
+  useEffect(() => {
+    if (!cyInstance) return;
+    const handleNodeTap = (evt: any) => {
+      const commit = commits.find((c) => c.id === evt.target.id());
+      console.log("GitVisualizer: node tapped", commit?.hash);
+      if (commit) {
+        setSelectedCommit(commit);
+        setIsDiffOpen(true);
+        onCommitSelect(commit);
+      }
+    };
+    cyInstance.on("tap", "node", handleNodeTap);
+    return () => {
+      if (cyInstance && !cyInstance.destroyed())
+        cyInstance.off("tap", "node", handleNodeTap);
+    };
+  }, [commits, onCommitSelect, cyInstance, repoPath, vscode]);
 
+  useEffect(() => {
+    return () => {
+      const cy = cyRef.current;
+      if (cy && (cy as any).__animationCleanup)
+        (cy as any).__animationCleanup();
+      cyRef.current = null;
+    };
+  }, []);
+
+  // Layout runner
+  useEffect(() => {
+    if (!cyInstance || !elements.length) return;
+    const frame = requestAnimationFrame(() => {
+      if (!cyInstance || cyInstance.destroyed()) return;
+      try {
+        const l = cyInstance.layout(layout as any);
+        if (l && typeof l.run === "function") {
+          l.run();
+          const recentNodes = cyInstance.nodes("[index < 10]");
+          cyInstance.fit(recentNodes.nonempty() ? recentNodes : undefined, 30);
+        }
+      } catch {}
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [elements, layout, commits, cyInstance]);
+
+  if (isLoading || loading) {
     return (
-        <div className="relative h-full w-full bg-background overflow-hidden">
-            <CytoscapeComponent
-                key={`${repoPath}:${branch}:${commits.length}`}
-                elements={elements as any}
-                cy={onCyInit}
-                stylesheet={stylesheet as any}
-                layout={layout as any}
-                wheelSensitivity={0.5}
-                style={{ width: "100%", height: "100%" }}
-            />
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
-                <SearchBar
-                    commits={commits}
-                    onCommitSelect={(commit) => {
-                        setSelectedId(commit.id);
-                        setSelectedCommit(commit);
-                        setIsDiffOpen(true);
-                        onCommitSelect(commit);
-                        if (cyInstance) {
-                            const node = cyInstance.getElementById(commit.id);
-                            if (node.nonempty()) {
-                                cyInstance.elements().unselect();
-                                node.select();
-                                cyInstance.center(node);
-                            }
-                        }
-                    }}
-                />
-            </div>
-
-            <DiffDialog
-                open={isDiffOpen}
-                onOpenChange={setIsDiffOpen}
-                repoPath={repoPath}
-                branch={branch}
-                commit={selectedCommit}
-                apiConfiguration={apiConfiguration}
-                onOpenApiManager={onOpenApiManager}
-                onExecute={(hash) => {
-                    setExecutingCommits(prev => {
-                        const next = new Set(prev);
-                        next.add(hash);
-                        return next;
-                    });
-                }}
-            />
-        </div>
+      <div className="flex h-full w-full items-center justify-center bg-background text-muted-foreground text-xs">
+        <div className="animate-spin mr-2 h-3 w-3 border-b-2 border-primary rounded-full"></div>{" "}
+        Loading...
+      </div>
     );
+  }
+
+  if (commits.length === 0) {
+    return (
+      <div className="flex h-full w-full items-center justify-center text-muted-foreground bg-background text-xs font-medium tracking-wide opacity-50">
+        NO REPOSITORY LOADED
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative h-full w-full bg-background overflow-hidden">
+      <CytoscapeComponent
+        key={`${repoPath}:${branch}:${commits.length}`}
+        elements={elements as any}
+        cy={onCyInit}
+        stylesheet={stylesheet as any}
+        layout={layout as any}
+        wheelSensitivity={0.5}
+        style={{ width: "100%", height: "100%" }}
+      />
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
+        <SearchBar
+          commits={commits}
+          onCommitSelect={(commit) => {
+            setSelectedId(commit.id);
+            setSelectedCommit(commit);
+            setIsDiffOpen(true);
+            onCommitSelect(commit);
+            if (cyInstance) {
+              const node = cyInstance.getElementById(commit.id);
+              if (node.nonempty()) {
+                cyInstance.elements().unselect();
+                node.select();
+                cyInstance.center(node);
+              }
+            }
+          }}
+        />
+      </div>
+
+      <DiffDialog
+        open={isDiffOpen}
+        onOpenChange={setIsDiffOpen}
+        repoPath={repoPath}
+        branch={branch}
+        commit={selectedCommit}
+        apiConfiguration={apiConfiguration}
+        onOpenApiManager={onOpenApiManager}
+        onExecute={(hash) => {
+          // Mark this commit as executing
+          setExecutionTime(Date.now());
+          setExecutingCommits((prev) => {
+            const next = new Set(prev);
+            next.add(hash);
+            return next;
+          });
+
+          // Also set the node data so the Cy instance can pick it up immediately
+          if (cyRef.current) {
+            const node = cyRef.current.getElementById(hash);
+            if (node && node.nonempty()) node.data("isExecuting", "true");
+          }
+        }}
+      />
+    </div>
+  );
 }
