@@ -9,13 +9,13 @@ import { pipeline } from 'stream/promises';
 const MINIMUM_CST_VERSION = '0.0.1';
 
 interface Asset {
-    name: string;
-    browser_download_url: string;
+  name: string;
+  browser_download_url: string;
 }
 
 interface Release {
-    tag_name: string;
-    assets: Asset[];
+  tag_name: string;
+  assets: Asset[];
 }
 
 export class CstManager {

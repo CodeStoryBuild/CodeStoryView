@@ -4,23 +4,23 @@ import * as path from 'path';
 import * as os from 'os';
 
 export interface Commit {
-    id: string;
-    label: string;
-    hash: string;
-    message: string;
-    author: string;
-    date: string;
-    parents: string[];
-    isWorkingDir: boolean;
-    kind?: string;
+  id: string;
+  label: string;
+  hash: string;
+  message: string;
+  author: string;
+  date: string;
+  parents: string[];
+  isWorkingDir: boolean;
+  kind?: string;
 }
 
 export interface GitDiff {
-    diff: string;
+  diff: string;
 }
 
 export interface GitBranches {
-    branches: string[];
+  branches: string[];
 }
 
 // Helper function to execute a git command safely using argument arrays
