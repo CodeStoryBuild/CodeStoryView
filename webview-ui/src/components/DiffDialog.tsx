@@ -13,6 +13,12 @@ import { Clock, GitCommit, RotateCcw, GitBranch, Save } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+  TooltipProvider,
+} from "@/components/ui/tooltip";
 import { getVsCodeApi } from "@/lib/vscode";
 
 export function DiffDialog({
@@ -24,6 +30,8 @@ export function DiffDialog({
   apiConfiguration,
   onOpenApiManager,
   onExecute,
+  isAnyExecuting = false,
+  isCurrentExecuting = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -37,6 +45,8 @@ export function DiffDialog({
   } | null;
   onOpenApiManager?: () => void;
   onExecute?: (hash: string) => void;
+  isAnyExecuting?: boolean;
+  isCurrentExecuting?: boolean;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +61,6 @@ export function DiffDialog({
     model: string;
     globalConfig: Record<string, any>;
   } | null>(apiConfiguration || null);
-  const [isExecuting, setIsExecuting] = useState(false);
 
   const isRoot =
     commit && (commit.isRoot || !commit.parents || commit.parents.length === 0);
@@ -99,8 +108,6 @@ export function DiffDialog({
           setError("Failed to parse diff");
           setLoading(false);
         }
-      } else if (message.command === "resetExecuting") {
-        setIsExecuting(false);
       }
     };
 
@@ -143,7 +150,6 @@ export function DiffDialog({
       return;
     }
 
-    setIsExecuting(true);
     if (commit?.hash && onExecute) {
       onExecute(commit.hash);
     }
@@ -261,29 +267,53 @@ export function DiffDialog({
 
             <div className="flex items-center gap-2 mt-3">
               {commit?.isWorkingDir ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
-                  onClick={() => handleVibeCommand("commit")}
-                  disabled={isExecuting}
-                >
-                  <Save className="h-3 w-3" />
-                  Commit
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
+                        onClick={() => handleVibeCommand("commit")}
+                        disabled={isAnyExecuting}
+                      >
+                        <Save className="h-3 w-3" />
+                        Commit
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {isAnyExecuting && !isCurrentExecuting && (
+                    <TooltipContent side="bottom">
+                      Another operation is currently executing
+                    </TooltipContent>
+                  )}
+                </Tooltip>
               ) : !isIneligible ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
-                  onClick={() => handleVibeCommand("expand")}
-                  disabled={isExecuting}
-                >
-                  <RotateCcw
-                    className={`h-3 w-3 ${isExecuting ? "animate-spin" : ""}`}
-                  />
-                  Fix
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
+                        onClick={() => handleVibeCommand("expand")}
+                        disabled={isAnyExecuting}
+                      >
+                        <RotateCcw
+                          className={`h-3 w-3 ${
+                            isCurrentExecuting ? "animate-spin" : ""
+                          }`}
+                        />
+                        Fix
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {isAnyExecuting && !isCurrentExecuting && (
+                    <TooltipContent side="bottom">
+                      Another operation is currently executing
+                    </TooltipContent>
+                  )}
+                </Tooltip>
               ) : null}
             </div>
           </DialogHeader>

@@ -187,8 +187,7 @@ export async function fetchBranches(repoPath: string): Promise<string[]> {
           b &&
           !b.startsWith("origin/") &&
           !b.startsWith("remotes/") &&
-          !b.includes("HEAD detached") &&
-          !b.startsWith("backup- "),
+          !b.includes("HEAD detached"),
       )
       .filter((b, idx, arr) => arr.indexOf(b) === idx); // deduplicate
 

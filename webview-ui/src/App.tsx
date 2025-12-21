@@ -5,6 +5,16 @@ import { BranchSelector } from "./components/BranchSelector";
 import { ApiKeyManager, ApiKeyManagerToggle } from "./components/ApiKeyManager";
 import { getVsCodeApi } from "./lib/vscode";
 import { Spinner } from "./components/ui/spinner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./components/ui/alert-dialog";
 
 function App() {
   const vscode = getVsCodeApi();
@@ -27,6 +37,13 @@ function App() {
     model: string;
     globalConfig: Record<string, any>;
   } | null>(null);
+
+  const [pendingBranch, setPendingBranch] = useState<string | null>(null);
+  const [lastPromptedBranch, setLastPromptedBranch] = useState<string | null>(
+    prevState?.lastPromptedBranch || null,
+  );
+  const [selectedCommit, setSelectedCommit] = useState<any>(null);
+  const [isFirstLoad, setIsFirstLoad] = useState(true);
 
   // Initialize API configuration from localStorage and extension SecretStorage
   useEffect(() => {
@@ -91,9 +108,15 @@ function App() {
       setDraftRepoPath(path);
       setIsLoaded(true);
       setLoadError(null);
-      vscode.setState({ ...vscode.getState(), repoPath: path, branch });
+      setIsFirstLoad(true);
+      vscode.setState({
+        ...vscode.getState(),
+        repoPath: path,
+        branch,
+        lastPromptedBranch,
+      });
     },
-    [branch, vscode],
+    [branch, lastPromptedBranch, vscode],
   );
 
   useEffect(() => {
@@ -111,11 +134,43 @@ function App() {
           if (message.branches) setBranches(message.branches);
           if (message.isDetached !== undefined)
             setIsDetached(message.isDetached);
-          if (message.currentBranch && (message.shouldUpdate || !branch)) {
+
+          if (isFirstLoad && message.currentBranch) {
+            setIsFirstLoad(false);
             setBranch(message.currentBranch);
+            setLastPromptedBranch(message.currentBranch);
             vscode.setState({
               ...vscode.getState(),
               branch: message.currentBranch,
+              lastPromptedBranch: message.currentBranch,
+            });
+            return;
+          }
+
+          if (
+            !message.isManual &&
+            message.currentBranch &&
+            message.currentBranch !== branch &&
+            message.currentBranch !== lastPromptedBranch &&
+            branch !== "" &&
+            !selectedCommit
+          ) {
+            setPendingBranch(message.currentBranch);
+            setLastPromptedBranch(message.currentBranch);
+            vscode.setState({
+              ...vscode.getState(),
+              lastPromptedBranch: message.currentBranch,
+            });
+          } else if (
+            message.currentBranch &&
+            (message.shouldUpdate || !branch)
+          ) {
+            setBranch(message.currentBranch);
+            setLastPromptedBranch(message.currentBranch);
+            vscode.setState({
+              ...vscode.getState(),
+              branch: message.currentBranch,
+              lastPromptedBranch: message.currentBranch,
             });
           }
           break;
@@ -137,6 +192,7 @@ function App() {
             command: "loadRepo",
             directory: repoPath,
             branch: branch,
+            isManual: false,
           });
           break;
         case "cstStatus":
@@ -146,7 +202,15 @@ function App() {
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, [handleLoadRepo, repoPath, branch, vscode]);
+  }, [
+    handleLoadRepo,
+    repoPath,
+    branch,
+    vscode,
+    isFirstLoad,
+    lastPromptedBranch,
+    selectedCommit,
+  ]);
 
   return (
     <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden font-sans">
@@ -161,10 +225,12 @@ function App() {
             isDetached={isDetached}
             onBranchSelect={(b) => {
               setBranch(b);
-              vscode.postMessage({
-                command: "loadRepo",
-                directory: repoPath,
+              setLastPromptedBranch(b);
+              setSelectedCommit(null);
+              vscode.setState({
+                ...vscode.getState(),
                 branch: b,
+                lastPromptedBranch: b,
               });
             }}
             onReload={() => {
@@ -191,15 +257,66 @@ function App() {
           <GitVisualizer
             repoPath={repoPath}
             branch={branch}
+            selectedCommit={selectedCommit}
             apiConfiguration={apiConfiguration}
             onOpenApiManager={() => setShowApiManager(true)}
             onCommitSelect={(commit) => {
+              setSelectedCommit(commit);
               console.log("Selected commit:", commit);
               // Future: show diff/details
             }}
           />
         )}
       </main>
+
+      <AlertDialog
+        open={!!pendingBranch}
+        onOpenChange={(open) => !open && setPendingBranch(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Update Visualizer?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your local repository switched to branch{" "}
+              <strong>{pendingBranch}</strong>. Would you like to update the
+              visualizer to show this branch?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                if (pendingBranch) {
+                  setLastPromptedBranch(pendingBranch);
+                  vscode.setState({
+                    ...vscode.getState(),
+                    lastPromptedBranch: pendingBranch,
+                  });
+                }
+                setPendingBranch(null);
+              }}
+            >
+              Keep {branch}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingBranch) {
+                  setBranch(pendingBranch);
+                  setLastPromptedBranch(pendingBranch);
+                  setSelectedCommit(null);
+                  vscode.setState({
+                    ...vscode.getState(),
+                    branch: pendingBranch,
+                    lastPromptedBranch: pendingBranch,
+                  });
+                  setPendingBranch(null);
+                }
+              }}
+            >
+              Switch to {pendingBranch}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Footer / Tucked Selector */}
       {isLoaded && (

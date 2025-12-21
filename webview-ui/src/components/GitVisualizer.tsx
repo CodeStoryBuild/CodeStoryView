@@ -35,6 +35,7 @@ interface GitVisualizerProps {
   repoPath: string;
   branch: string;
   onCommitSelect: (commit: any) => void;
+  selectedCommit: any;
   isLoading?: boolean;
   apiConfiguration?: {
     provider: string;
@@ -48,6 +49,7 @@ export function GitVisualizer({
   repoPath,
   branch,
   onCommitSelect,
+  selectedCommit,
   isLoading = false,
   apiConfiguration = null,
   onOpenApiManager,
@@ -57,26 +59,30 @@ export function GitVisualizer({
   const cyRef = useRef<Core | null>(null);
   const [cyInstance, setCyInstance] = useState<Core | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedCommit, setSelectedCommit] = useState<CommitNode | null>(null);
   const [isDiffOpen, setIsDiffOpen] = useState(false);
   const [executingCommits, setExecutingCommits] = useState<Set<string>>(
     new Set(),
   );
   const [executionTime, setExecutionTime] = useState<number>(0);
-  const newNodeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const pulseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const vscode = getVsCodeApi();
 
-  const fetchCommits = useCallback(() => {
-    if (!repoPath) return;
-    setLoading(true);
-    const message: any = { command: "loadRepo", directory: repoPath };
-    if (branch) message.branch = branch;
-    vscode.postMessage(message);
-  }, [repoPath, branch, vscode]);
+  const fetchCommits = useCallback(
+    (isManual = false) => {
+      if (!repoPath) return;
+      setLoading(true);
+      const message: any = {
+        command: "loadRepo",
+        directory: repoPath,
+        isManual,
+      };
+      if (branch) message.branch = branch;
+      vscode.postMessage(message);
+    },
+    [repoPath, branch, vscode],
+  );
 
   useEffect(() => {
-    if (repoPath) fetchCommits();
+    if (repoPath) fetchCommits(true);
   }, [repoPath, branch, fetchCommits]);
 
   // Handle messages from the extension
@@ -141,12 +147,6 @@ export function GitVisualizer({
         case "resetExecuting":
           setExecutingCommits(new Set());
           setExecutionTime(0);
-
-          // Clear any pulse timeout
-          if (pulseTimeoutRef.current) {
-            clearTimeout(pulseTimeoutRef.current);
-            pulseTimeoutRef.current = null;
-          }
 
           // Reset node data and styles immediately
           if (cyRef.current) {
@@ -322,7 +322,7 @@ export function GitVisualizer({
     [themeColors],
   );
 
-  const onCyInit = (cy: Core) => {
+  const onCyInit = useCallback((cy: Core) => {
     cyRef.current = cy;
     setCyInstance(cy);
     cy.resize();
@@ -423,7 +423,28 @@ export function GitVisualizer({
       isRunning = false;
       if (animationFrame) cancelAnimationFrame(animationFrame);
     };
-  };
+  }, []);
+
+  useEffect(() => {
+    if (selectedCommit === null) {
+      setSelectedId(null);
+      setIsDiffOpen(false);
+      if (cyInstance) {
+        cyInstance.elements().unselect();
+      }
+    } else {
+      setSelectedId(selectedCommit.id);
+    }
+  }, [selectedCommit, cyInstance]);
+
+  useEffect(() => {
+    if (!cyInstance || !selectedId) return;
+    const node = cyInstance.getElementById(selectedId);
+    if (node.nonempty()) {
+      cyInstance.elements().unselect();
+      node.select();
+    }
+  }, [cyInstance, selectedId, elements]);
 
   useEffect(() => {
     if (!cyInstance) return;
@@ -431,7 +452,7 @@ export function GitVisualizer({
       const commit = commits.find((c) => c.id === evt.target.id());
       console.log("GitVisualizer: node tapped", commit?.hash);
       if (commit) {
-        setSelectedCommit(commit);
+        setSelectedId(commit.id);
         setIsDiffOpen(true);
         onCommitSelect(commit);
       }
@@ -502,7 +523,6 @@ export function GitVisualizer({
           commits={commits}
           onCommitSelect={(commit) => {
             setSelectedId(commit.id);
-            setSelectedCommit(commit);
             setIsDiffOpen(true);
             onCommitSelect(commit);
             if (cyInstance) {
@@ -523,6 +543,10 @@ export function GitVisualizer({
         repoPath={repoPath}
         branch={branch}
         commit={selectedCommit}
+        isAnyExecuting={executingCommits.size > 0}
+        isCurrentExecuting={
+          selectedCommit ? executingCommits.has(selectedCommit.hash) : false
+        }
         apiConfiguration={apiConfiguration}
         onOpenApiManager={onOpenApiManager}
         onExecute={(hash) => {

@@ -376,6 +376,7 @@ export function activate(context: vscode.ExtensionContext) {
                   currentBranch,
                   isDetached,
                   shouldUpdate: !message.branch,
+                  isManual: message.isManual,
                 });
 
                 // Fetch commits

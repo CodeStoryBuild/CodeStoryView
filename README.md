@@ -35,7 +35,6 @@ Watch a short demonstration showing how the extension converts a large working d
 
 ---
 
-
 ## License
 
 This project is licensed under GPLv2. See `LICENSE.txt` for details.
