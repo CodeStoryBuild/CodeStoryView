@@ -3,6 +3,9 @@ import { GitVisualizer } from "./components/GitVisualizer";
 import { GitRepoSelector } from "./components/GitRepoSelector";
 import { BranchSelector } from "./components/BranchSelector";
 import { ApiKeyManager, ApiKeyManagerToggle } from "./components/ApiKeyManager";
+import { Button } from "./components/ui/button";
+import { Checkbox } from "./components/ui/checkbox";
+import { Label } from "./components/ui/label";
 import { getVsCodeApi } from "./lib/vscode";
 import { Spinner } from "./components/ui/spinner";
 import {
@@ -44,6 +47,8 @@ function App() {
   );
   const [selectedCommit, setSelectedCommit] = useState<any>(null);
   const [isFirstLoad, setIsFirstLoad] = useState(true);
+  const [ignoreBranchPrompt, setIgnoreBranchPrompt] = useState(false);
+  const [tempIgnorePrompt, setTempIgnorePrompt] = useState(false);
 
   // Initialize API configuration from localStorage and extension SecretStorage
   useEffect(() => {
@@ -59,6 +64,9 @@ function App() {
           model: savedModel,
           globalConfig: config,
         });
+        if (message.ignoreBranchPrompt !== undefined) {
+          setIgnoreBranchPrompt(message.ignoreBranchPrompt);
+        }
       }
     };
 
@@ -149,6 +157,7 @@ function App() {
 
           if (
             !message.isManual &&
+            !ignoreBranchPrompt &&
             message.currentBranch &&
             message.currentBranch !== branch &&
             message.currentBranch !== lastPromptedBranch &&
@@ -271,7 +280,12 @@ function App() {
 
       <AlertDialog
         open={!!pendingBranch}
-        onOpenChange={(open) => !open && setPendingBranch(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingBranch(null);
+            setTempIgnorePrompt(false);
+          }
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -282,38 +296,67 @@ function App() {
               visualizer to show this branch?
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() => {
-                if (pendingBranch) {
-                  setLastPromptedBranch(pendingBranch);
-                  vscode.setState({
-                    ...vscode.getState(),
-                    lastPromptedBranch: pendingBranch,
-                  });
-                }
-                setPendingBranch(null);
-              }}
-            >
-              Keep {branch}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (pendingBranch) {
-                  setBranch(pendingBranch);
-                  setLastPromptedBranch(pendingBranch);
-                  setSelectedCommit(null);
-                  vscode.setState({
-                    ...vscode.getState(),
-                    branch: pendingBranch,
-                    lastPromptedBranch: pendingBranch,
-                  });
+          <AlertDialogFooter className="flex-col items-end gap-3">
+            <div className="flex gap-2">
+              <AlertDialogCancel
+                onClick={() => {
+                  if (tempIgnorePrompt) {
+                    vscode.postMessage({
+                      command: "setIgnoreBranchPrompt",
+                      value: true,
+                    });
+                    setIgnoreBranchPrompt(true);
+                  }
+                  if (pendingBranch) {
+                    setLastPromptedBranch(pendingBranch);
+                    vscode.setState({
+                      ...vscode.getState(),
+                      lastPromptedBranch: pendingBranch,
+                    });
+                  }
                   setPendingBranch(null);
-                }
-              }}
-            >
-              Switch to {pendingBranch}
-            </AlertDialogAction>
+                }}
+              >
+                Keep {branch}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (tempIgnorePrompt) {
+                    vscode.postMessage({
+                      command: "setIgnoreBranchPrompt",
+                      value: true,
+                    });
+                    setIgnoreBranchPrompt(true);
+                  }
+                  if (pendingBranch) {
+                    setBranch(pendingBranch);
+                    setLastPromptedBranch(pendingBranch);
+                    setSelectedCommit(null);
+                    vscode.setState({
+                      ...vscode.getState(),
+                      branch: pendingBranch,
+                      lastPromptedBranch: pendingBranch,
+                    });
+                    setPendingBranch(null);
+                  }
+                }}
+              >
+                Switch to {pendingBranch}
+              </AlertDialogAction>
+            </div>
+            <div className="flex items-center gap-2 px-1">
+              <Checkbox
+                id="ignore-branch-prompt"
+                checked={tempIgnorePrompt}
+                onCheckedChange={(checked) => setTempIgnorePrompt(!!checked)}
+              />
+              <Label
+                htmlFor="ignore-branch-prompt"
+                className="text-xs text-muted-foreground cursor-pointer"
+              >
+                Don't show again
+              </Label>
+            </div>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

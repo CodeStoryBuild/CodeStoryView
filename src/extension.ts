@@ -22,8 +22,18 @@ export function activate(context: vscode.ExtensionContext) {
 
   let activePanel: vscode.WebviewPanel | undefined;
   let repoWatcher: vscode.FileSystemWatcher | undefined;
+  let nonRepoWatcher: vscode.FileSystemWatcher | undefined;
   let watchedRepoPath: string | undefined;
   let debounceTimer: NodeJS.Timeout | undefined;
+  let nonRepoDebounceTimer: NodeJS.Timeout | undefined;
+  let lastState:
+    | {
+        branches: string[];
+        currentBranch: string | undefined;
+        isDetached: boolean;
+        commits: any[];
+      }
+    | undefined;
 
   context.subscriptions.push(
     vscode.window.onDidEndTerminalShellExecution(async (e) => {
@@ -85,9 +95,17 @@ export function activate(context: vscode.ExtensionContext) {
             repoWatcher = undefined;
             watchedRepoPath = undefined;
           }
+          if (nonRepoWatcher) {
+            nonRepoWatcher.dispose();
+            nonRepoWatcher = undefined;
+          }
           if (debounceTimer) {
             clearTimeout(debounceTimer);
             debounceTimer = undefined;
+          }
+          if (nonRepoDebounceTimer) {
+            clearTimeout(nonRepoDebounceTimer);
+            nonRepoDebounceTimer = undefined;
           }
         },
         null,
@@ -119,6 +137,7 @@ export function activate(context: vscode.ExtensionContext) {
         api_base: "--api-base",
         temperature: "--temperature",
         max_tokens: "--max-tokens",
+        relevance_filter_level: "--relevance-filter-level",
         secret_scanner_aggression: "--secret-scanner-aggression",
         fallback_grouping_strategy: "--fallback-grouping-strategy",
         chunking_level: "--chunking-level",
@@ -174,13 +193,23 @@ export function activate(context: vscode.ExtensionContext) {
         globalArgs?: Record<string, any>;
         commandArgs?: Record<string, any>;
       }) => {
-        const { repoPath, branch, globalArgs } = params;
+        const { repoPath, branch, globalArgs, commandArgs } = params;
         if (!repoPath)
           throw new Error("Repository path is required for commit command");
 
-        // Global args first, then the subcommand. Commit currently takes no command-specific args.
+        // Global args first, then the subcommand.
         const args = [...prepareGlobalArgs(globalArgs)];
         args.push("commit");
+
+        // Add guidance message if present
+        if (commandArgs?.message) {
+          args.push("-m", commandArgs.message);
+        }
+
+        // Add intent if present
+        if (commandArgs?.intent) {
+          args.push("--intent", commandArgs.intent);
+        }
 
         panel.webview.postMessage({
           command: "displayOutput",
@@ -238,6 +267,183 @@ export function activate(context: vscode.ExtensionContext) {
           branch,
         );
       };
+
+      // Helper to (re)load repository and manage watchers.
+      async function handleLoadRepo(
+        panel: vscode.WebviewPanel,
+        repoPath: string,
+        branch?: string,
+        isManual = true,
+      ) {
+        if (!repoPath) throw new Error("Please specify a directory path.");
+
+        // Setup file system watchers if path changed
+        if (watchedRepoPath !== repoPath) {
+          if (repoWatcher) {
+            repoWatcher.dispose();
+            repoWatcher = undefined;
+          }
+          if (nonRepoWatcher) {
+            nonRepoWatcher.dispose();
+            nonRepoWatcher = undefined;
+          }
+          if (debounceTimer) {
+            clearTimeout(debounceTimer);
+            debounceTimer = undefined;
+          }
+          if (nonRepoDebounceTimer) {
+            clearTimeout(nonRepoDebounceTimer);
+            nonRepoDebounceTimer = undefined;
+          }
+
+          // Watch for any changes in the .git directory (to trigger an automatic refresh)
+          const gitPattern = new vscode.RelativePattern(repoPath, ".git/**");
+          repoWatcher = vscode.workspace.createFileSystemWatcher(gitPattern);
+
+          const refresh = () => {
+            if (debounceTimer) {
+              clearTimeout(debounceTimer);
+            }
+            debounceTimer = setTimeout(() => {
+              if (activePanel) {
+                activePanel.webview.postMessage({ command: "refreshGraph" });
+              }
+            }, 1000); // 1 second debounce
+          };
+
+          repoWatcher.onDidChange(refresh);
+          repoWatcher.onDidCreate(refresh);
+          repoWatcher.onDidDelete(refresh);
+
+          // Watch for changes outside of .git and show a small 'reload' notification
+          // Only setup if not ignored by user
+          const ignoreNotifications = context.globalState.get<boolean>(
+            "codestory.ignoreFileChangeNotifications",
+            false,
+          );
+
+          if (!ignoreNotifications) {
+            const allPattern = new vscode.RelativePattern(repoPath, "**");
+            nonRepoWatcher =
+              vscode.workspace.createFileSystemWatcher(allPattern);
+
+            const nonRepoRefresh = (uri?: vscode.Uri) => {
+              const fsPath = uri?.fsPath || repoPath;
+              // If the change is inside .git, ignore it here
+              const rel = path.relative(repoPath, fsPath);
+              if (rel.split(path.sep)[0] === ".git") return;
+
+              if (nonRepoDebounceTimer) {
+                clearTimeout(nonRepoDebounceTimer);
+              }
+
+              nonRepoDebounceTimer = setTimeout(async () => {
+                // Only show notification when the panel is open
+                if (!activePanel) return;
+
+                // Re-check in case it was changed while debouncing
+                if (
+                  context.globalState.get<boolean>(
+                    "codestory.ignoreFileChangeNotifications",
+                    false,
+                  )
+                ) {
+                  return;
+                }
+
+                const selection = await vscode.window.showInformationMessage(
+                  "File changes detected outside .git. Reload?",
+                  "Reload",
+                  "Don't show again",
+                );
+
+                if (selection === "Reload") {
+                  // Trigger a manual reload just like clicking the branch reload button
+                  // Use last known branch if available
+                  const branchToUse =
+                    lastState?.currentBranch || branch || "HEAD";
+                  await handleLoadRepo(panel, repoPath, branchToUse, true);
+                } else if (selection === "Don't show again") {
+                  await context.globalState.update(
+                    "codestory.ignoreFileChangeNotifications",
+                    true,
+                  );
+                  // Dispose watcher since we won't need it anymore
+                  if (nonRepoWatcher) {
+                    nonRepoWatcher.dispose();
+                    nonRepoWatcher = undefined;
+                  }
+                }
+              }, 1000);
+            };
+
+            nonRepoWatcher.onDidChange(nonRepoRefresh);
+            nonRepoWatcher.onDidCreate(nonRepoRefresh);
+            nonRepoWatcher.onDidDelete(nonRepoRefresh);
+          }
+
+          watchedRepoPath = repoPath;
+          lastState = undefined;
+        }
+
+        // Fetch branches and commits as before
+        const branches = await fetchBranches(repoPath);
+        let currentBranch = await getCurrentBranch(repoPath);
+        const isDetached = currentBranch === "(not on a branch)";
+
+        if (isDetached && branches.length > 0) {
+          currentBranch = branches[0];
+        }
+
+        const commits = await fetchCommits(repoPath, branch || "HEAD");
+
+        const newState = {
+          branches,
+          currentBranch,
+          isDetached,
+          commits,
+        };
+
+        const stateChanged =
+          !lastState ||
+          JSON.stringify(lastState.branches) !==
+            JSON.stringify(newState.branches) ||
+          lastState.currentBranch !== newState.currentBranch ||
+          lastState.isDetached !== newState.isDetached ||
+          JSON.stringify(lastState.commits) !==
+            JSON.stringify(newState.commits);
+
+        if (!isManual && !stateChanged) {
+          // No changes and not a manual refresh, skip updating webview
+          return;
+        }
+
+        lastState = newState;
+
+        panel.webview.postMessage({
+          command: "displayOutput",
+          data: `Loading repository: ${repoPath} (branch: ${branch || "HEAD"})`,
+        });
+
+        panel.webview.postMessage({
+          command: "displayBranches",
+          branches,
+          currentBranch,
+          isDetached,
+          shouldUpdate: !branch,
+          isManual: isManual,
+        });
+
+        panel.webview.postMessage({
+          command: "displayCommits",
+          commits,
+        });
+
+        panel.webview.postMessage({
+          command: "displayOutput",
+          data: `Successfully loaded ${commits.length} commits.`,
+        });
+      }
 
       panel.webview.onDidReceiveMessage(
         async (message) => {
@@ -313,83 +519,14 @@ export function activate(context: vscode.ExtensionContext) {
               return;
 
             case "loadRepo":
+              // Delegate to helper so other places can trigger the same behavior
               try {
-                const repoPath = message.directory;
-                const branch = message.branch || "HEAD";
-                if (!repoPath) {
-                  throw new Error("Please specify a directory path.");
-                }
-
-                // Setup file system watcher for git changes if path changed
-                if (watchedRepoPath !== repoPath) {
-                  if (repoWatcher) {
-                    repoWatcher.dispose();
-                  }
-                  if (debounceTimer) {
-                    clearTimeout(debounceTimer);
-                  }
-
-                  // Watch for any changes in the .git directory
-                  const pattern = new vscode.RelativePattern(
-                    repoPath,
-                    ".git/**",
-                  );
-                  repoWatcher =
-                    vscode.workspace.createFileSystemWatcher(pattern);
-
-                  const refresh = () => {
-                    if (debounceTimer) {
-                      clearTimeout(debounceTimer);
-                    }
-                    debounceTimer = setTimeout(() => {
-                      if (activePanel) {
-                        activePanel.webview.postMessage({
-                          command: "refreshGraph",
-                        });
-                      }
-                    }, 1000); // 1 second debounce
-                  };
-
-                  repoWatcher.onDidChange(refresh);
-                  repoWatcher.onDidCreate(refresh);
-                  repoWatcher.onDidDelete(refresh);
-                  watchedRepoPath = repoPath;
-                }
-
-                panel.webview.postMessage({
-                  command: "displayOutput",
-                  data: `Loading repository: ${repoPath} (branch: ${branch})`,
-                });
-
-                // Fetch branches first
-                const branches = await fetchBranches(repoPath);
-                let currentBranch = await getCurrentBranch(repoPath);
-                const isDetached = currentBranch === "(not on a branch)";
-
-                if (isDetached && branches.length > 0) {
-                  currentBranch = branches[0];
-                }
-
-                panel.webview.postMessage({
-                  command: "displayBranches",
-                  branches,
-                  currentBranch,
-                  isDetached,
-                  shouldUpdate: !message.branch,
-                  isManual: message.isManual,
-                });
-
-                // Fetch commits
-                const commits = await fetchCommits(repoPath, branch);
-                panel.webview.postMessage({
-                  command: "displayCommits",
-                  commits,
-                });
-
-                panel.webview.postMessage({
-                  command: "displayOutput",
-                  data: `Successfully loaded ${commits.length} commits.`,
-                });
+                await handleLoadRepo(
+                  panel,
+                  message.directory,
+                  message.branch,
+                  message.isManual !== false,
+                );
               } catch (error) {
                 panel.webview.postMessage({
                   command: "loadError",
@@ -426,7 +563,22 @@ export function activate(context: vscode.ExtensionContext) {
                   console.error("Failed to parse global config", e);
                 }
               }
-              panel.webview.postMessage({ command: "globalConfig", config });
+              const ignoreBranchPrompt = context.globalState.get<boolean>(
+                "codestory.ignoreBranchPrompt",
+                false,
+              );
+              panel.webview.postMessage({
+                command: "globalConfig",
+                config,
+                ignoreBranchPrompt,
+              });
+              return;
+
+            case "setIgnoreBranchPrompt":
+              await context.globalState.update(
+                "codestory.ignoreBranchPrompt",
+                message.value,
+              );
               return;
 
             case "setGlobalConfig":

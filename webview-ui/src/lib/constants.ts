@@ -155,10 +155,15 @@ export const GLOBAL_OPTIONS: Record<string, ConfigOption> = {
     min: 1,
     is_int: true,
   },
+  relevance_filter_level: {
+    type: "literal",
+    description: "How much to filter for irrelevant changes",
+    allowed: ["safe", "standard", "strict"],
+  },
   secret_scanner_aggression: {
     type: "literal",
     description: "How aggresively to scan for secrets ('cst commit' only)",
-    allowed: ["safe", "standard", "strict", "none"],
+    allowed: ["safe", "standard", "strict"],
   },
   fallback_grouping_strategy: {
     type: "literal",

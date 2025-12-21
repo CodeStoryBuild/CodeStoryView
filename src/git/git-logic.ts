@@ -13,6 +13,7 @@ export interface Commit {
   parents: string[];
   isWorkingDir: boolean;
   kind?: string;
+  status?: string;
 }
 
 export interface GitDiff {
@@ -135,7 +136,8 @@ export async function fetchCommits(
       const status = await runGit(repoPath, ["status", "--porcelain"], {
         allowErrors: true,
       });
-      const hasChanges = status.trim().length > 0;
+      const trimmedStatus = status.trim();
+      const hasChanges = trimmedStatus.length > 0;
       if (hasChanges && commits.length > 0) {
         const head = commits[0]; // git log lists HEAD first
         commits.unshift({
@@ -144,11 +146,13 @@ export async function fetchCommits(
           hash: "WORKING_DIR",
           message: "Working directory (uncommitted changes)",
           author: "workspace",
-          date: new Date().toISOString(),
+          date: new Date(0).toISOString(), // Use a stable date
           parents: [head.hash],
           // extra metadata for the client to style differently
           kind: "working",
           isWorkingDir: true,
+          // Add status to ensure change detection works when working dir changes
+          status: trimmedStatus,
         });
       }
     } catch {

@@ -13,6 +13,7 @@ import { Clock, GitCommit, RotateCcw, GitBranch, Save } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { ButtonGroup } from "@/components/ui/button-group";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
@@ -56,6 +57,9 @@ export function DiffDialog({
     "line-by-line",
   );
   const [rawDiff, setRawDiff] = useState<string>("");
+  const [guidanceMessage, setGuidanceMessage] = useState("");
+  const [showIntentDialog, setShowIntentDialog] = useState(false);
+  const [intentMessage, setIntentMessage] = useState("");
   const [localApiConfiguration, setLocalApiConfiguration] = useState<{
     provider: string;
     model: string;
@@ -86,6 +90,8 @@ export function DiffDialog({
     if (open && commit && repoPath) {
       setLoading(true);
       setError(null);
+      setGuidanceMessage("");
+      setIntentMessage("");
       vscode.postMessage({
         command: "fetchDiff",
         repoPath,
@@ -136,9 +142,22 @@ export function DiffDialog({
     return `${commit.message || "Commit"}`;
   }, [commit]);
 
-  const handleVibeCommand = (command: string) => {
+  const handleVibeCommand = (command: string, intent?: string) => {
+    const isCommit = command === "commit";
+
+    // If relevance filtering is enabled, we MUST have an intent for commit commands
+    if (
+      isCommit &&
+      !intent &&
+      localApiConfiguration?.globalConfig?.relevance_filter_level
+    ) {
+      setShowIntentDialog(true);
+      return;
+    }
+
     // Close the dialog immediately, regardless of whether we run or not
     onOpenChange(false);
+    setShowIntentDialog(false);
 
     // Require provider and model separately. API key is optional.
     if (
@@ -154,9 +173,6 @@ export function DiffDialog({
       onExecute(commit.hash);
     }
 
-    // Use command-specific backend commands so we can add args per-command later.
-    const isCommit = command === "commit";
-
     // Build a small, extensible "globalArgs" object which the extension will map to CLI args
     const globalArgs: Record<string, any> = {
       model: `${localApiConfiguration.provider}:${localApiConfiguration.model}`,
@@ -170,8 +186,14 @@ export function DiffDialog({
       globalArgs,
     };
 
-    // For non-commit commands include a command-specific args object
-    if (!isCommit) {
+    // For commit commands, include guidance message and intent
+    if (isCommit) {
+      payload.commandArgs = {
+        message: guidanceMessage || null,
+        intent: intent || null,
+      };
+    } else {
+      // For non-commit commands include a command-specific args object
       payload.commandArgs = {
         commit_hash: commit?.hash,
       };
@@ -267,27 +289,42 @@ export function DiffDialog({
 
             <div className="flex items-center gap-2 mt-3">
               {commit?.isWorkingDir ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
-                        onClick={() => handleVibeCommand("commit")}
-                        disabled={isAnyExecuting}
-                      >
-                        <Save className="h-3 w-3" />
-                        Commit
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  {isAnyExecuting && !isCurrentExecuting && (
+                <div className="flex items-center gap-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Input
+                        placeholder="Guidance for LLM..."
+                        value={guidanceMessage}
+                        onChange={(e) => setGuidanceMessage(e.target.value)}
+                        className="h-7 text-[11px] w-48 bg-background/50 border-border/50 focus:border-primary/50"
+                      />
+                    </TooltipTrigger>
                     <TooltipContent side="bottom">
-                      Another operation is currently executing
+                      guidance message for llm commit messages
                     </TooltipContent>
-                  )}
-                </Tooltip>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
+                          onClick={() => handleVibeCommand("commit")}
+                          disabled={isAnyExecuting}
+                        >
+                          <Save className="h-3 w-3" />
+                          Commit
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    {isAnyExecuting && !isCurrentExecuting && (
+                      <TooltipContent side="bottom">
+                        Another operation is currently executing
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </div>
               ) : !isIneligible ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -335,6 +372,44 @@ export function DiffDialog({
                 dangerouslySetInnerHTML={{ __html: diffHtml }}
               />
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showIntentDialog} onOpenChange={setShowIntentDialog}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Relevance Filtering Enabled</DialogTitle>
+            <DialogDescription>
+              You have enabled relevance filtering (note you can disable in API
+              Key Manager), and must provide an intent for the changes so that
+              the AI models can have a reference for what is relevant and what
+              is not.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <Input
+              placeholder="Describe the intent of your changes..."
+              value={intentMessage}
+              onChange={(e) => setIntentMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && intentMessage.trim()) {
+                  handleVibeCommand("commit", intentMessage);
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setShowIntentDialog(false)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!intentMessage.trim()}
+              onClick={() => handleVibeCommand("commit", intentMessage)}
+            >
+              Run Commit
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
