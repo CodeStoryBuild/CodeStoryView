@@ -17,8 +17,6 @@
 
 ## V0.1.2
 
-- Security: Obfuscate API key when running commands instead of providing API key as a direct console argument
-- Fix: The extension now reads your vscode theme instead of having its own fixed theme
 - Changed: Update README to be clearer and add a LICENSE
 - Changed: Improve 'Run Config' to have a more clean and easy to use interface
 - Feat: The extension now tracks what branch you are on and automatically reflects the changes
