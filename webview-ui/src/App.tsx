@@ -2,12 +2,14 @@ import { useState, useEffect, useCallback } from "react";
 import { GitVisualizer } from "./components/GitVisualizer";
 import { GitRepoSelector } from "./components/GitRepoSelector";
 import { BranchSelector } from "./components/BranchSelector";
-import { ApiKeyManager, ApiKeyManagerToggle } from "./components/ApiKeyManager";
+import { ApiKeyManager } from "./components/ApiKeyManager";
 import { Button } from "./components/ui/button";
 import { Checkbox } from "./components/ui/checkbox";
 import { Label } from "./components/ui/label";
 import { getVsCodeApi } from "./lib/vscode";
 import { Spinner } from "./components/ui/spinner";
+import { Settings } from "lucide-react";
+import { cn } from "./lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,9 +28,11 @@ function App() {
   const [repoPath, setRepoPath] = useState(prevState?.repoPath || "");
   const [draftRepoPath, setDraftRepoPath] = useState(prevState?.repoPath || "");
   const [branch, setBranch] = useState(prevState?.branch || "");
+  const [repoBranch, setRepoBranch] = useState<string | null>(null);
   const [branches, setBranches] = useState<string[]>([]);
   const [isDetached, setIsDetached] = useState(false);
   const [isLoaded, setIsLoaded] = useState(!!prevState?.repoPath);
+  const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [cstStatus, setCstStatus] = useState<
     "idle" | "downloading" | "extracting" | "ready" | "error"
@@ -47,7 +51,9 @@ function App() {
   );
   const [selectedCommit, setSelectedCommit] = useState<any>(null);
   const [isFirstLoad, setIsFirstLoad] = useState(true);
-  const [ignoreBranchPrompt, setIgnoreBranchPrompt] = useState(false);
+  const [branchUpdateStrategy, setBranchUpdateStrategy] = useState<
+    "prompt" | "update" | "ignore"
+  >("prompt");
   const [tempIgnorePrompt, setTempIgnorePrompt] = useState(false);
 
   // Initialize API configuration from localStorage and extension SecretStorage
@@ -64,8 +70,8 @@ function App() {
           model: savedModel,
           globalConfig: config,
         });
-        if (message.ignoreBranchPrompt !== undefined) {
-          setIgnoreBranchPrompt(message.ignoreBranchPrompt);
+        if (message.branchUpdateStrategy !== undefined) {
+          setBranchUpdateStrategy(message.branchUpdateStrategy);
         }
       }
     };
@@ -115,13 +121,19 @@ function App() {
       setRepoPath(path);
       setDraftRepoPath(path);
       setIsLoaded(true);
+      setIsLoading(true);
       setLoadError(null);
       setIsFirstLoad(true);
+      setSelectedCommit(null);
       vscode.setState({
         ...vscode.getState(),
         repoPath: path,
         branch,
         lastPromptedBranch,
+      });
+      vscode.postMessage({
+        command: "loadRepo",
+        directory: path,
       });
     },
     [branch, lastPromptedBranch, vscode],
@@ -133,54 +145,83 @@ function App() {
       switch (message.command) {
         case "displayCommits":
           setLoadError(null);
+          setIsLoading(false);
           break;
         case "loadError":
           setLoadError(message.message || "Failed to load repository");
           setIsLoaded(false);
+          setIsLoading(false);
           break;
         case "displayBranches":
           if (message.branches) setBranches(message.branches);
           if (message.isDetached !== undefined)
             setIsDetached(message.isDetached);
 
-          if (isFirstLoad && message.currentBranch) {
+          const newRepoBranch = message.currentBranch;
+          const repoBranchChanged =
+            repoBranch !== null && newRepoBranch !== repoBranch;
+          setRepoBranch(newRepoBranch);
+
+          if (isFirstLoad && newRepoBranch) {
             setIsFirstLoad(false);
-            setBranch(message.currentBranch);
-            setLastPromptedBranch(message.currentBranch);
+            setBranch(newRepoBranch);
+            setLastPromptedBranch(newRepoBranch);
+            setSelectedCommit(null);
             vscode.setState({
               ...vscode.getState(),
-              branch: message.currentBranch,
-              lastPromptedBranch: message.currentBranch,
+              branch: newRepoBranch,
+              lastPromptedBranch: newRepoBranch,
             });
             return;
           }
 
           if (
             !message.isManual &&
-            !ignoreBranchPrompt &&
-            message.currentBranch &&
-            message.currentBranch !== branch &&
-            message.currentBranch !== lastPromptedBranch &&
+            branchUpdateStrategy === "prompt" &&
+            repoBranchChanged &&
+            newRepoBranch &&
+            newRepoBranch !== branch &&
+            newRepoBranch !== lastPromptedBranch &&
             branch !== "" &&
             !selectedCommit
           ) {
-            setPendingBranch(message.currentBranch);
-            setLastPromptedBranch(message.currentBranch);
+            setPendingBranch(newRepoBranch);
+            setLastPromptedBranch(newRepoBranch);
             vscode.setState({
               ...vscode.getState(),
-              lastPromptedBranch: message.currentBranch,
+              lastPromptedBranch: newRepoBranch,
             });
           } else if (
-            message.currentBranch &&
-            (message.shouldUpdate || !branch)
+            newRepoBranch &&
+            (message.shouldUpdate ||
+              !branch ||
+              (branchUpdateStrategy === "update" && repoBranchChanged))
           ) {
-            setBranch(message.currentBranch);
-            setLastPromptedBranch(message.currentBranch);
+            const oldBranch = branch;
+            setBranch(newRepoBranch);
+            setLastPromptedBranch(newRepoBranch);
+            setSelectedCommit(null);
             vscode.setState({
               ...vscode.getState(),
-              branch: message.currentBranch,
-              lastPromptedBranch: message.currentBranch,
+              branch: newRepoBranch,
+              lastPromptedBranch: newRepoBranch,
             });
+
+            // If we auto-updated because the branch changed and strategy is "update",
+            // we need to trigger a reload to get the commits for the new branch.
+            if (
+              branchUpdateStrategy === "update" &&
+              newRepoBranch !== oldBranch &&
+              oldBranch !== ""
+            ) {
+              setIsLoading(true);
+              vscode.postMessage({
+                command: "loadRepo",
+                directory: repoPath,
+                branch: newRepoBranch,
+                isManual: false,
+              });
+            }
           }
           break;
         case "displayDiff":
@@ -195,14 +236,6 @@ function App() {
               handleLoadRepo(message.directory);
             }
           }
-          break;
-        case "refreshGraph":
-          vscode.postMessage({
-            command: "loadRepo",
-            directory: repoPath,
-            branch: branch,
-            isManual: false,
-          });
           break;
         case "cstStatus":
           setCstStatus(message.status);
@@ -225,7 +258,7 @@ function App() {
     <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden font-sans">
       {/* Header / Top Bar */}
       {isLoaded && (
-        <div className="absolute top-4 left-4 z-20 flex items-center gap-4 bg-card/80 backdrop-blur-md border border-border p-1 rounded-lg shadow-sm">
+        <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-card/80 backdrop-blur-md border border-border p-1 rounded-lg shadow-sm">
           <BranchSelector
             branches={
               branches.length > 0 ? branches : [branch || "(not on a branch)"]
@@ -236,13 +269,21 @@ function App() {
               setBranch(b);
               setLastPromptedBranch(b);
               setSelectedCommit(null);
+              setIsLoading(true);
               vscode.setState({
                 ...vscode.getState(),
                 branch: b,
                 lastPromptedBranch: b,
               });
+              vscode.postMessage({
+                command: "loadRepo",
+                directory: repoPath,
+                branch: b,
+              });
             }}
             onReload={() => {
+              setSelectedCommit(null);
+              setIsLoading(true);
               vscode.postMessage({
                 command: "loadRepo",
                 directory: repoPath,
@@ -250,6 +291,21 @@ function App() {
               });
             }}
           />
+          <div className="w-px h-4 bg-border/50 mx-1" />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setShowApiManager(!showApiManager)}
+            className={cn(
+              "h-7 w-7 rounded-md transition-all",
+              !!apiConfiguration?.globalConfig?.api_key
+                ? "text-primary"
+                : "text-muted-foreground",
+            )}
+            title="API Settings"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </Button>
         </div>
       )}
 
@@ -267,6 +323,7 @@ function App() {
             repoPath={repoPath}
             branch={branch}
             selectedCommit={selectedCommit}
+            isLoading={isLoading}
             apiConfiguration={apiConfiguration}
             onOpenApiManager={() => setShowApiManager(true)}
             onCommitSelect={(commit) => {
@@ -302,10 +359,10 @@ function App() {
                 onClick={() => {
                   if (tempIgnorePrompt) {
                     vscode.postMessage({
-                      command: "setIgnoreBranchPrompt",
-                      value: true,
+                      command: "setBranchUpdateStrategy",
+                      value: "ignore",
                     });
-                    setIgnoreBranchPrompt(true);
+                    setBranchUpdateStrategy("ignore");
                   }
                   if (pendingBranch) {
                     setLastPromptedBranch(pendingBranch);
@@ -323,19 +380,25 @@ function App() {
                 onClick={() => {
                   if (tempIgnorePrompt) {
                     vscode.postMessage({
-                      command: "setIgnoreBranchPrompt",
-                      value: true,
+                      command: "setBranchUpdateStrategy",
+                      value: "update",
                     });
-                    setIgnoreBranchPrompt(true);
+                    setBranchUpdateStrategy("update");
                   }
                   if (pendingBranch) {
                     setBranch(pendingBranch);
                     setLastPromptedBranch(pendingBranch);
                     setSelectedCommit(null);
+                    setIsLoading(true);
                     vscode.setState({
                       ...vscode.getState(),
                       branch: pendingBranch,
                       lastPromptedBranch: pendingBranch,
+                    });
+                    vscode.postMessage({
+                      command: "loadRepo",
+                      directory: repoPath,
+                      branch: pendingBranch,
                     });
                     setPendingBranch(null);
                   }
@@ -346,15 +409,15 @@ function App() {
             </div>
             <div className="flex items-center gap-2 px-1">
               <Checkbox
-                id="ignore-branch-prompt"
+                id="ask-to-update-branch"
                 checked={tempIgnorePrompt}
                 onCheckedChange={(checked) => setTempIgnorePrompt(!!checked)}
               />
               <Label
-                htmlFor="ignore-branch-prompt"
+                htmlFor="ask-to-update-branch"
                 className="text-xs text-muted-foreground cursor-pointer"
               >
-                Don't show again
+                Remember my choice
               </Label>
             </div>
           </AlertDialogFooter>
@@ -378,11 +441,6 @@ function App() {
         currentProvider={apiConfiguration?.provider}
         currentModel={apiConfiguration?.model}
         currentGlobalConfig={apiConfiguration?.globalConfig}
-      />
-
-      <ApiKeyManagerToggle
-        onClick={() => setShowApiManager(!showApiManager)}
-        isConfigured={!!apiConfiguration?.globalConfig?.api_key}
       />
 
       {/* CST Download Overlay */}

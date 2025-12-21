@@ -9,6 +9,7 @@ import {
   fetchDiff,
   isGitRepo,
   getCurrentBranch,
+  hasGitChanges,
 } from "./git/git-logic";
 import { CstManager } from "./cst-manager";
 
@@ -24,6 +25,7 @@ export function activate(context: vscode.ExtensionContext) {
   let repoWatcher: vscode.FileSystemWatcher | undefined;
   let nonRepoWatcher: vscode.FileSystemWatcher | undefined;
   let watchedRepoPath: string | undefined;
+  let currentViewedBranch: string | undefined;
   let debounceTimer: NodeJS.Timeout | undefined;
   let nonRepoDebounceTimer: NodeJS.Timeout | undefined;
   let lastState:
@@ -44,7 +46,7 @@ export function activate(context: vscode.ExtensionContext) {
           if (e.exitCode === 0) {
             activePanel.webview.postMessage({
               command: "displayOutput",
-              data: `Command finished successfully. Refreshing graph...`,
+              data: `Command finished successfully.`,
             });
           } else {
             activePanel.webview.postMessage({
@@ -52,7 +54,6 @@ export function activate(context: vscode.ExtensionContext) {
               data: `Command failed with code ${e.exitCode}`,
             });
           }
-          activePanel.webview.postMessage({ command: "refreshGraph" });
           activePanel.webview.postMessage({ command: "resetExecuting" });
         }
       }
@@ -274,11 +275,15 @@ export function activate(context: vscode.ExtensionContext) {
         repoPath: string,
         branch?: string,
         isManual = true,
+        reloadReason?: "git" | "workdir",
       ) {
         if (!repoPath) throw new Error("Please specify a directory path.");
 
+        const pathChanged = watchedRepoPath !== repoPath;
+        currentViewedBranch = branch;
+
         // Setup file system watchers if path changed
-        if (watchedRepoPath !== repoPath) {
+        if (pathChanged) {
           if (repoWatcher) {
             repoWatcher.dispose();
             repoWatcher = undefined;
@@ -295,94 +300,6 @@ export function activate(context: vscode.ExtensionContext) {
             clearTimeout(nonRepoDebounceTimer);
             nonRepoDebounceTimer = undefined;
           }
-
-          // Watch for any changes in the .git directory (to trigger an automatic refresh)
-          const gitPattern = new vscode.RelativePattern(repoPath, ".git/**");
-          repoWatcher = vscode.workspace.createFileSystemWatcher(gitPattern);
-
-          const refresh = () => {
-            if (debounceTimer) {
-              clearTimeout(debounceTimer);
-            }
-            debounceTimer = setTimeout(() => {
-              if (activePanel) {
-                activePanel.webview.postMessage({ command: "refreshGraph" });
-              }
-            }, 1000); // 1 second debounce
-          };
-
-          repoWatcher.onDidChange(refresh);
-          repoWatcher.onDidCreate(refresh);
-          repoWatcher.onDidDelete(refresh);
-
-          // Watch for changes outside of .git and show a small 'reload' notification
-          // Only setup if not ignored by user
-          const ignoreNotifications = context.globalState.get<boolean>(
-            "codestory.ignoreFileChangeNotifications",
-            false,
-          );
-
-          if (!ignoreNotifications) {
-            const allPattern = new vscode.RelativePattern(repoPath, "**");
-            nonRepoWatcher =
-              vscode.workspace.createFileSystemWatcher(allPattern);
-
-            const nonRepoRefresh = (uri?: vscode.Uri) => {
-              const fsPath = uri?.fsPath || repoPath;
-              // If the change is inside .git, ignore it here
-              const rel = path.relative(repoPath, fsPath);
-              if (rel.split(path.sep)[0] === ".git") return;
-
-              if (nonRepoDebounceTimer) {
-                clearTimeout(nonRepoDebounceTimer);
-              }
-
-              nonRepoDebounceTimer = setTimeout(async () => {
-                // Only show notification when the panel is open
-                if (!activePanel) return;
-
-                // Re-check in case it was changed while debouncing
-                if (
-                  context.globalState.get<boolean>(
-                    "codestory.ignoreFileChangeNotifications",
-                    false,
-                  )
-                ) {
-                  return;
-                }
-
-                const selection = await vscode.window.showInformationMessage(
-                  "File changes detected outside .git. Reload?",
-                  "Reload",
-                  "Don't show again",
-                );
-
-                if (selection === "Reload") {
-                  // Trigger a manual reload just like clicking the branch reload button
-                  // Use last known branch if available
-                  const branchToUse =
-                    lastState?.currentBranch || branch || "HEAD";
-                  await handleLoadRepo(panel, repoPath, branchToUse, true);
-                } else if (selection === "Don't show again") {
-                  await context.globalState.update(
-                    "codestory.ignoreFileChangeNotifications",
-                    true,
-                  );
-                  // Dispose watcher since we won't need it anymore
-                  if (nonRepoWatcher) {
-                    nonRepoWatcher.dispose();
-                    nonRepoWatcher = undefined;
-                  }
-                }
-              }, 1000);
-            };
-
-            nonRepoWatcher.onDidChange(nonRepoRefresh);
-            nonRepoWatcher.onDidCreate(nonRepoRefresh);
-            nonRepoWatcher.onDidDelete(nonRepoRefresh);
-          }
-
-          watchedRepoPath = repoPath;
           lastState = undefined;
         }
 
@@ -420,6 +337,16 @@ export function activate(context: vscode.ExtensionContext) {
 
         lastState = newState;
 
+        if (reloadReason === "git") {
+          vscode.window.showInformationMessage(
+            "Repo reloaded because of a .git change",
+          );
+        } else if (reloadReason === "workdir") {
+          vscode.window.showInformationMessage(
+            "Change in working dir, reload.",
+          );
+        }
+
         panel.webview.postMessage({
           command: "displayOutput",
           data: `Loading repository: ${repoPath} (branch: ${branch || "HEAD"})`,
@@ -443,6 +370,85 @@ export function activate(context: vscode.ExtensionContext) {
           command: "displayOutput",
           data: `Successfully loaded ${commits.length} commits.`,
         });
+
+        if (pathChanged) {
+          // Watch for any changes in the .git directory (to trigger an automatic refresh)
+          const gitPattern = new vscode.RelativePattern(repoPath, ".git/**");
+          repoWatcher = vscode.workspace.createFileSystemWatcher(gitPattern);
+
+          const handleFileChange = async (isGitChange = false) => {
+            if (!activePanel) return;
+
+            if (isGitChange) {
+              // if git changes, always reload
+              vscode.window.setStatusBarMessage(
+                "Repo State Changed, Reloading...",
+                3000,
+              );
+              const branchToUse =
+                currentViewedBranch || lastState?.currentBranch || "HEAD";
+              await handleLoadRepo(panel, repoPath, branchToUse, false, "git");
+            } else {
+              const currentHasChanges = await hasGitChanges(repoPath);
+              const previousHasChanges =
+                lastState?.commits.some((c) => c.id === "WORKING_DIR") || false;
+              if (currentHasChanges !== previousHasChanges) {
+                // Status-bar and an informational popup for working-directory changes
+                vscode.window.setStatusBarMessage(
+                  "Working Directory State Changed, Reloading...",
+                  3000,
+                );
+
+                const branchToUse =
+                  currentViewedBranch || lastState?.currentBranch || "HEAD";
+                await handleLoadRepo(
+                  panel,
+                  repoPath,
+                  branchToUse,
+                  false,
+                  "workdir",
+                );
+              }
+            }
+          };
+
+          const refresh = () => {
+            if (debounceTimer) {
+              clearTimeout(debounceTimer);
+            }
+            debounceTimer = setTimeout(() => handleFileChange(true), 1000);
+          };
+
+          repoWatcher.onDidChange(refresh);
+          repoWatcher.onDidCreate(refresh);
+          repoWatcher.onDidDelete(refresh);
+
+          // Watch for changes outside of .git
+          const allPattern = new vscode.RelativePattern(repoPath, "**");
+          nonRepoWatcher = vscode.workspace.createFileSystemWatcher(allPattern);
+
+          const nonRepoRefresh = (uri?: vscode.Uri) => {
+            const fsPath = uri?.fsPath || repoPath;
+            // If the change is inside .git, ignore it here
+            const rel = path.relative(repoPath, fsPath);
+            if (rel.split(path.sep)[0] === ".git") return;
+
+            if (nonRepoDebounceTimer) {
+              clearTimeout(nonRepoDebounceTimer);
+            }
+
+            nonRepoDebounceTimer = setTimeout(
+              () => handleFileChange(false),
+              1000,
+            );
+          };
+
+          nonRepoWatcher.onDidChange(nonRepoRefresh);
+          nonRepoWatcher.onDidCreate(nonRepoRefresh);
+          nonRepoWatcher.onDidDelete(nonRepoRefresh);
+
+          watchedRepoPath = repoPath;
+        }
       }
 
       panel.webview.onDidReceiveMessage(
@@ -563,22 +569,24 @@ export function activate(context: vscode.ExtensionContext) {
                   console.error("Failed to parse global config", e);
                 }
               }
-              const ignoreBranchPrompt = context.globalState.get<boolean>(
-                "codestory.ignoreBranchPrompt",
-                false,
-              );
+              const branchUpdateStrategy = vscode.workspace
+                .getConfiguration("codestoryView")
+                .get<string>("branchUpdateStrategy", "prompt");
               panel.webview.postMessage({
                 command: "globalConfig",
                 config,
-                ignoreBranchPrompt,
+                branchUpdateStrategy,
               });
               return;
 
-            case "setIgnoreBranchPrompt":
-              await context.globalState.update(
-                "codestory.ignoreBranchPrompt",
-                message.value,
-              );
+            case "setBranchUpdateStrategy":
+              await vscode.workspace
+                .getConfiguration("codestoryView")
+                .update(
+                  "branchUpdateStrategy",
+                  message.value,
+                  vscode.ConfigurationTarget.Global,
+                );
               return;
 
             case "setGlobalConfig":
@@ -671,19 +679,9 @@ async function runCstTool(
           (err as any).code === "ENOENT" ||
           stderr.includes("not recognized")
         ) {
-          vscode.window
-            .showErrorMessage(
-              `Could not find 'cst' executable. Is it installed?`,
-              "Open Settings",
-            )
-            .then((selection) => {
-              if (selection === "Open Settings") {
-                vscode.commands.executeCommand(
-                  "workbench.action.openSettings",
-                  "codestoryView.executablePath",
-                );
-              }
-            });
+          vscode.window.showErrorMessage(
+            `Could not find 'cst' executable. Is it installed?`,
+          );
           reject(new Error("Codestory not found"));
           return;
         }

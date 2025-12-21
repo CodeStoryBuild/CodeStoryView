@@ -6,6 +6,10 @@ import dagre from "cytoscape-dagre";
 import { SearchBar } from "@/components/search-bar";
 import { getVsCodeApi } from "@/lib/vscode";
 import { DiffDialog } from "./DiffDialog";
+import { cn } from "@/lib/utils";
+import { Spinner } from "./ui/spinner";
+import { Plus, Minus } from "lucide-react";
+import { Button } from "./ui/button";
 
 // Register layout plugin (client-only)
 if (typeof window !== "undefined") {
@@ -56,6 +60,7 @@ export function GitVisualizer({
 }: GitVisualizerProps) {
   const [commits, setCommits] = useState<CommitNode[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isLayoutReady, setIsLayoutReady] = useState(false);
   const cyRef = useRef<Core | null>(null);
   const [cyInstance, setCyInstance] = useState<Core | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -70,6 +75,8 @@ export function GitVisualizer({
     (isManual = false) => {
       if (!repoPath) return;
       setLoading(true);
+      setIsLayoutReady(false);
+      setIsDiffOpen(false);
       const message: any = {
         command: "loadRepo",
         directory: repoPath,
@@ -136,10 +143,13 @@ export function GitVisualizer({
             setCommits(processed);
 
             setLoading(false);
+            setIsLayoutReady(false);
+            setIsDiffOpen(false);
           }
           break;
         case "loadError":
           setLoading(false);
+          setIsLayoutReady(true);
           break;
         case "displayOutput":
           // console.log(message.data);
@@ -475,7 +485,19 @@ export function GitVisualizer({
 
   // Layout runner
   useEffect(() => {
-    if (!cyInstance || !elements.length) return;
+    if (!cyInstance || !elements.length) {
+      if (elements.length === 0) setIsLayoutReady(true);
+      return;
+    }
+
+    setIsLayoutReady(false);
+
+    const onLayoutStop = () => {
+      setIsLayoutReady(true);
+    };
+
+    cyInstance.one("layoutstop", onLayoutStop);
+
     const frame = requestAnimationFrame(() => {
       if (!cyInstance || cyInstance.destroyed()) return;
       try {
@@ -484,22 +506,24 @@ export function GitVisualizer({
           l.run();
           const recentNodes = cyInstance.nodes("[index < 10]");
           cyInstance.fit(recentNodes.nonempty() ? recentNodes : undefined, 30);
+        } else {
+          setIsLayoutReady(true);
         }
-      } catch {}
+      } catch {
+        setIsLayoutReady(true);
+      }
     });
-    return () => cancelAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(frame);
+      if (cyInstance && !cyInstance.destroyed()) {
+        cyInstance.off("layoutstop", onLayoutStop);
+      }
+    };
   }, [elements, layout, commits, cyInstance]);
 
-  if (isLoading || loading) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-background text-muted-foreground text-xs">
-        <div className="animate-spin mr-2 h-3 w-3 border-b-2 border-primary rounded-full"></div>{" "}
-        Loading...
-      </div>
-    );
-  }
+  const showLoading = isLoading || loading || !isLayoutReady;
 
-  if (commits.length === 0) {
+  if (commits.length === 0 && !showLoading) {
     return (
       <div className="flex h-full w-full items-center justify-center text-muted-foreground bg-background text-xs font-medium tracking-wide opacity-50">
         NO REPOSITORY LOADED
@@ -509,16 +533,38 @@ export function GitVisualizer({
 
   return (
     <div className="relative h-full w-full bg-background overflow-hidden">
-      <CytoscapeComponent
-        key={`${repoPath}:${branch}:${commits.length}`}
-        elements={elements as any}
-        cy={onCyInit}
-        stylesheet={stylesheet as any}
-        layout={layout as any}
-        wheelSensitivity={0.5}
-        style={{ width: "100%", height: "100%" }}
-      />
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10">
+      <div
+        className={cn(
+          "h-full w-full transition-opacity duration-300",
+          showLoading ? "opacity-0" : "opacity-100",
+        )}
+      >
+        <CytoscapeComponent
+          key={`${repoPath}:${branch}:${commits.length}`}
+          elements={elements as any}
+          cy={onCyInit}
+          stylesheet={stylesheet as any}
+          layout={layout as any}
+          wheelSensitivity={0.5}
+          style={{ width: "100%", height: "100%" }}
+        />
+      </div>
+
+      {showLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background z-50">
+          <div className="flex items-center text-muted-foreground text-xs">
+            <Spinner className="mr-2 h-3 w-3" />
+            Loading...
+          </div>
+        </div>
+      )}
+
+      <div
+        className={cn(
+          "absolute top-4 left-1/2 -translate-x-1/2 z-10 transition-opacity duration-300 flex items-center gap-2",
+          showLoading ? "opacity-0 pointer-events-none" : "opacity-100",
+        )}
+      >
         <SearchBar
           commits={commits}
           onCommitSelect={(commit) => {
@@ -535,6 +581,48 @@ export function GitVisualizer({
             }
           }}
         />
+        <div className="flex items-center gap-1 bg-background/80 backdrop-blur-sm border border-border/50 p-1 rounded-md shadow-sm">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => {
+              if (cyInstance) {
+                const currentZoom = cyInstance.zoom();
+                cyInstance.zoom({
+                  level: currentZoom * 1.2,
+                  renderedPosition: {
+                    x: cyInstance.width() / 2,
+                    y: cyInstance.height() / 2,
+                  },
+                });
+              }
+            }}
+            title="Zoom in"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => {
+              if (cyInstance) {
+                const currentZoom = cyInstance.zoom();
+                cyInstance.zoom({
+                  level: currentZoom * 0.8,
+                  renderedPosition: {
+                    x: cyInstance.width() / 2,
+                    y: cyInstance.height() / 2,
+                  },
+                });
+              }
+            }}
+            title="Zoom out"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       <DiffDialog

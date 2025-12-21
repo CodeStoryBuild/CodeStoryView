@@ -73,6 +73,17 @@ export async function isGitRepo(repoPath: string): Promise<boolean> {
   }
 }
 
+export async function hasGitChanges(repoPath: string): Promise<boolean> {
+  try {
+    const status = await runGit(repoPath, ["status", "--porcelain"], {
+      allowErrors: true,
+    });
+    return status.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchCommits(
   repoPath: string,
   branch: string = "HEAD",
@@ -268,39 +279,26 @@ export async function fetchDiff(
         .filter((s) => s.length > 0);
 
       if (files.length > 0) {
-        // Create a temporary empty file
-        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "codestory-"));
-        const emptyPath = path.join(tmpDir, "empty");
-        fs.writeFileSync(emptyPath, "");
-        try {
-          for (const f of files) {
-            const perFile = await runGit(
-              repoPath,
-              [
-                "diff",
-                "--no-index",
-                "--no-color",
-                "--no-ext-diff",
-                "--",
-                emptyPath,
-                f,
-              ],
-              { allowErrors: true },
-            );
-            if (perFile && perFile.trim().length > 0) {
-              if (diffText && !diffText.endsWith("\n")) {
-                diffText += "\n";
-              }
-              diffText += perFile;
+        for (const f of files) {
+          const perFile = await runGit(
+            repoPath,
+            [
+              "diff",
+              "--no-index",
+              "--no-color",
+              "--no-ext-diff",
+              "--",
+              "/dev/null",
+              f,
+            ],
+            { allowErrors: true },
+          );
+          if (perFile && perFile.trim().length > 0) {
+            if (diffText && !diffText.endsWith("\n")) {
+              diffText += "\n";
             }
+            diffText += perFile;
           }
-        } finally {
-          try {
-            fs.unlinkSync(emptyPath);
-          } catch {}
-          try {
-            fs.rmdirSync(tmpDir);
-          } catch {}
         }
       }
     } else {

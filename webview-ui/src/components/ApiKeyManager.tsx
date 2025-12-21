@@ -462,7 +462,8 @@ export function ApiKeyManager({
                       </TooltipTrigger>
                       <TooltipContent className="max-w-[200px] text-[11px]">
                         Optional. The API key will be used to authenticate your
-                        requests to Codestory.
+                        requests to Codestory. Can also use CODESTORY_API_KEY
+                        env variable.
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
