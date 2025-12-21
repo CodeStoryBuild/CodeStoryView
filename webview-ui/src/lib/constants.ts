@@ -88,14 +88,14 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
     "claude-3.5-opus",
     "claude-3.5-haiku",
   ],
-  lmstudio: [
-    "local-model", // User-defined local path
-  ],
+  lmstudio: [],
   cerebras: [
     "llama-3.3-70b",
+    "llama3.1-8b",
+    "zai-glm-4.6",
     "qwen3-32b",
     "gpt-oss-120b",
-    "qwen-3-235b-a22b-instruct",
+    "qwen-3-235b-a22b-instruct-2507",
   ],
   ollama: ["llama3.3", "deepseek-v3", "qwen3", "phi4", "mistral-nemo"],
   sambanova: [
@@ -112,7 +112,7 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
     "llama-3.3-70b",
   ],
   nebius: ["llama-3.3-70b-instruct", "deepseek-v3", "qwen2.5-72b-instruct"],
-  xai: ["grok-4.1", "grok-4.1-thinking", "grok-4.1-fast", "grok-2-vision"],
+  xai: ["grok-4.1", "grok-4.1-thinking", "grok-4.1-fast"],
 };
 
 export const GET_KEY_LINKS: Record<string, string> = {
