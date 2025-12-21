@@ -650,12 +650,6 @@ async function getExecutablePath(
   cstManager: CstManager,
   panel?: vscode.WebviewPanel,
 ): Promise<string> {
-  const config = vscode.workspace.getConfiguration("codestoryView");
-  const customPath = config.get<string>("executablePath");
-  if (customPath && customPath.trim().length > 0) {
-    return customPath;
-  }
-
   const resolvedPath = await cstManager.get_exe((status) => {
     if (panel) {
       panel.webview.postMessage({ command: "cstStatus", status });

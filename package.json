@@ -32,10 +32,15 @@
     "configuration": {
       "title": "Codestory Visualizer",
       "properties": {
-        "codestoryView.executablePath": {
+        "codestoryView.branchUpdateStrategy": {
           "type": "string",
-          "default": "",
-          "markdownDescription": "Absolute path to the `cst` executable. Leave empty to use system PATH."
+          "enum": [
+            "prompt",
+            "update",
+            "ignore"
+          ],
+          "default": "prompt",
+          "markdownDescription": "Strategy for updating the branch when a new branch is detected in the repository."
         }
       }
     }
