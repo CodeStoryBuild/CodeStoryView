@@ -113,6 +113,9 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
   ],
   nebius: ["llama-3.3-70b-instruct", "deepseek-v3", "qwen2.5-72b-instruct"],
   xai: ["grok-4.1", "grok-4.1-thinking", "grok-4.1-fast"],
+  openrouter: [],
+  centml: [],
+  featherless: []
 };
 
 export const GET_KEY_LINKS: Record<string, string> = {
