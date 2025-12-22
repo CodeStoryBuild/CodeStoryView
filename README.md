@@ -1,4 +1,6 @@
 # Codestory View
+![Deployment](https://img.shields.io/github/actions/workflow/status/CodeStoryBuild/CodeStoryView/publish-extension.yml?label=Deployment)
+![Version](https://img.shields.io/github/v/tag/CodeStoryBuild/CodeStoryView?label=tag&sort=semver)
 
 Codestory View is a Visual Studio Code extension that helps you turn large, messy commits into a clean, well-structured commit history using the Codestory CLI (https://cli.codestory.build).
 
