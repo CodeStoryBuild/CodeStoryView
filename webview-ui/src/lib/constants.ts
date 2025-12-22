@@ -115,7 +115,7 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
   xai: ["grok-4.1", "grok-4.1-thinking", "grok-4.1-fast"],
   openrouter: [],
   centml: [],
-  featherless: []
+  featherless: [],
 };
 
 export const GET_KEY_LINKS: Record<string, string> = {
