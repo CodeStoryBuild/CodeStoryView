@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -173,17 +173,17 @@ export function ApiKeyManager({
 
   const handleProviderChange = (newProvider: string) => {
     setSelectedProvider(newProvider);
-    const defaultModel = PROVIDER_MODELS[newProvider][0];
-    setSelectedModel(defaultModel);
-    setModelQuery(defaultModel);
+    // Leave model blank for user to select
+    setSelectedModel("");
+    setModelQuery("");
     setError("");
 
     localStorage.setItem(STORAGE_KEYS.PROVIDER, newProvider);
-    localStorage.setItem(STORAGE_KEYS.MODEL, defaultModel);
+    localStorage.removeItem(STORAGE_KEYS.MODEL);
 
     onConfigurationChange({
       provider: newProvider,
-      model: defaultModel,
+      model: "",
       globalConfig: globalConfig,
     });
   };
@@ -267,6 +267,15 @@ export function ApiKeyManager({
 
   const isValid = true;
 
+  // Memoize inline style object to prevent re-renders
+  const titleStyle = useMemo<CSSProperties>(
+    () => ({
+      fontFamily:
+        'var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif)',
+    }),
+    [],
+  );
+
   if (!open) return null;
 
   const providers = Object.keys(PROVIDER_MODELS);
@@ -274,12 +283,15 @@ export function ApiKeyManager({
   const getKeyUrl = GET_KEY_LINKS[selectedProvider];
 
   return (
-    <div className="fixed bottom-16 left-4 z-50 animate-in slide-in-from-bottom-2 duration-200 max-w-[calc(100vw-2rem)]">
-      <Card className="w-80 max-w-full shadow-xl border border-border bg-card/95 backdrop-blur-md flex flex-col max-h-[calc(100vh-8rem)] gap-0 py-0 overflow-hidden">
-        <CardHeader className="pt-3 pb-1 px-3 shrink-0 border-b relative">
+    <div className="fixed bottom-16 left-2 sm:left-4 right-2 sm:right-auto z-50 animate-in slide-in-from-bottom-2 duration-200 sm:max-w-[calc(100vw-2rem)]">
+      <Card className="w-full sm:w-96 max-w-full shadow-xl border border-border bg-card/95 backdrop-blur-md flex flex-col max-h-[calc(100vh-8rem)] gap-0 py-0 overflow-hidden">
+        <CardHeader className="pt-3 sm:pt-4 pb-2 px-3 shrink-0 border-b relative">
           <div className="flex items-center justify-between">
             {/* Title now has 0 height impact */}
-            <CardTitle className="text-[11px] font-bold uppercase tracking-widest opacity-60 flex-1 text-center leading-none">
+            <CardTitle
+              className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider opacity-70 flex-1 text-center leading-none"
+              style={titleStyle}
+            >
               Run Config
             </CardTitle>
 
@@ -297,7 +309,7 @@ export function ApiKeyManager({
 
         <CardContent className="p-0 flex flex-col flex-1 min-h-0">
           <div className="flex-1 min-h-0 overflow-y-auto">
-            <div className="space-y-3 p-4 pt-2">
+            <div className="space-y-3 p-3 sm:p-4 pt-2">
               <div className="flex gap-2">
                 {/* Provider Selection */}
                 <div className="flex-1 space-y-1.5">

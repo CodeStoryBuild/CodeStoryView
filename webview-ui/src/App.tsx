@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { GitVisualizer } from "./components/GitVisualizer";
 import { GitRepoSelector } from "./components/GitRepoSelector";
 import { BranchSelector } from "./components/BranchSelector";
@@ -254,57 +254,85 @@ function App() {
     selectedCommit,
   ]);
 
+  // Memoized fallback branches array to prevent new array on every render
+  const displayBranches = useMemo(
+    () => (branches.length > 0 ? branches : [branch || "(not on a branch)"]),
+    [branches, branch],
+  );
+
+  // Memoized callbacks for BranchSelector
+  const handleBranchSelect = useCallback(
+    (b: string) => {
+      setBranch(b);
+      setLastPromptedBranch(b);
+      setSelectedCommit(null);
+      setIsLoading(true);
+      vscode.setState({
+        ...vscode.getState(),
+        branch: b,
+        lastPromptedBranch: b,
+      });
+      vscode.postMessage({
+        command: "loadRepo",
+        directory: repoPath,
+        branch: b,
+      });
+    },
+    [repoPath, vscode],
+  );
+
+  const handleReload = useCallback(() => {
+    setSelectedCommit(null);
+    setIsLoading(true);
+    vscode.postMessage({
+      command: "loadRepo",
+      directory: repoPath,
+      branch: branch,
+    });
+  }, [repoPath, branch, vscode]);
+
+  // Memoized callbacks for GitVisualizer
+  const handleOpenApiManager = useCallback(() => setShowApiManager(true), []);
+
+  const handleCommitSelect = useCallback((commit: any) => {
+    setSelectedCommit(commit);
+    console.log("Selected commit:", commit);
+  }, []);
+
   return (
     <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden font-sans">
-      {/* Header / Top Bar */}
+      {/* Branch Selector - Top Left (minimal) */}
       {isLoaded && (
-        <div className="absolute top-4 left-4 z-20 flex items-center gap-2 bg-card/80 backdrop-blur-md border border-border p-1 rounded-lg shadow-sm">
-          <BranchSelector
-            branches={
-              branches.length > 0 ? branches : [branch || "(not on a branch)"]
-            }
-            selectedBranch={branch || "(not on a branch)"}
-            isDetached={isDetached}
-            onBranchSelect={(b) => {
-              setBranch(b);
-              setLastPromptedBranch(b);
-              setSelectedCommit(null);
-              setIsLoading(true);
-              vscode.setState({
-                ...vscode.getState(),
-                branch: b,
-                lastPromptedBranch: b,
-              });
-              vscode.postMessage({
-                command: "loadRepo",
-                directory: repoPath,
-                branch: b,
-              });
-            }}
-            onReload={() => {
-              setSelectedCommit(null);
-              setIsLoading(true);
-              vscode.postMessage({
-                command: "loadRepo",
-                directory: repoPath,
-                branch: branch,
-              });
-            }}
-          />
-          <div className="w-px h-4 bg-border/50 mx-1" />
+        <div className="absolute top-2 sm:top-4 left-2 sm:left-4 z-20">
+          <div className="flex items-center gap-1 bg-card/80 backdrop-blur-md border border-border p-1 rounded-lg shadow-sm">
+            <BranchSelector
+              branches={displayBranches}
+              selectedBranch={branch || "(not on a branch)"}
+              isDetached={isDetached}
+              onBranchSelect={handleBranchSelect}
+              onReload={handleReload}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* API Settings Button - Bottom Left */}
+      {isLoaded && (
+        <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4 z-20">
           <Button
-            variant="ghost"
-            size="icon"
+            variant="outline"
+            size="sm"
             onClick={() => setShowApiManager(!showApiManager)}
             className={cn(
-              "h-7 w-7 rounded-md transition-all",
+              "h-8 gap-1.5 bg-card/80 backdrop-blur-md border-border shadow-sm",
               !!apiConfiguration?.globalConfig?.api_key
-                ? "text-primary"
+                ? "text-primary border-primary/30"
                 : "text-muted-foreground",
             )}
             title="API Settings"
           >
             <Settings className="h-3.5 w-3.5" />
+            <span className="text-[11px]">Config</span>
           </Button>
         </div>
       )}
@@ -325,12 +353,8 @@ function App() {
             selectedCommit={selectedCommit}
             isLoading={isLoading}
             apiConfiguration={apiConfiguration}
-            onOpenApiManager={() => setShowApiManager(true)}
-            onCommitSelect={(commit) => {
-              setSelectedCommit(commit);
-              console.log("Selected commit:", commit);
-              // Future: show diff/details
-            }}
+            onOpenApiManager={handleOpenApiManager}
+            onCommitSelect={handleCommitSelect}
           />
         )}
       </main>

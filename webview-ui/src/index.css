@@ -118,3 +118,51 @@
     );
   }
 }
+
+/* Custom scrollbar utilities */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(
+    --vscode-scrollbarSlider-background,
+    rgba(255, 255, 255, 0.2)
+  );
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(
+    --vscode-scrollbarSlider-hoverBackground,
+    rgba(255, 255, 255, 0.3)
+  );
+}
+
+.custom-scrollbar-horizontal::-webkit-scrollbar {
+  height: 4px;
+}
+
+.custom-scrollbar-horizontal::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar-horizontal::-webkit-scrollbar-thumb {
+  background: var(
+    --vscode-scrollbarSlider-background,
+    rgba(255, 255, 255, 0.2)
+  );
+  border-radius: 2px;
+}
+
+.custom-scrollbar-horizontal::-webkit-scrollbar-thumb:hover {
+  background: var(
+    --vscode-scrollbarSlider-hoverBackground,
+    rgba(255, 255, 255, 0.3)
+  );
+}

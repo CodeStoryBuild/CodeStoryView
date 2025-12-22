@@ -34,7 +34,9 @@ export function SearchBar({
   const [open, setOpen] = React.useState(false);
 
   return (
-    <div className={cn("relative w-[400px]", className)}>
+    <div
+      className={cn("relative w-full max-w-[400px] sm:w-[400px]", className)}
+    >
       <Command className="rounded-md border border-border/50 shadow-sm overflow-visible bg-background/80 backdrop-blur-sm [&_[data-slot=command-input-wrapper]]:border-b-0">
         <CommandInput
           placeholder="Search commits by message or hash..."

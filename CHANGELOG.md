@@ -1,6 +1,13 @@
 ## V0.1.5
+- Add: Add company logo to extension
+- Add: The codestory fix command also now supports a guidance message
+- Feat: When using the codestory commit command, you can now select which files you would like to commit
+- Feat: Added responsive layout for more robust UI across different window sizes
 - Changed: Rename google provider to googlegenai, as the Codestory CLI provider name has changed
+- Changed: Add higher fidelity demo video
 - Fix: only show repository state change notifications when the extension window is active
+- Fix: Improve UI performance through caching heavy operations
+- Fix: When running Codestory commands strings are now escaped to avoid console errors
 
 
 ## V0.1.4

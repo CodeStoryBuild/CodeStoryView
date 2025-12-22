@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+  CSSProperties,
+} from "react";
 import CytoscapeComponent from "react-cytoscapejs";
 import cytoscape from "cytoscape";
 import type { Core } from "cytoscape";
@@ -332,6 +339,12 @@ export function GitVisualizer({
     [themeColors],
   );
 
+  // Memoize inline style object to prevent re-renders
+  const cytoscapeStyle = useMemo<CSSProperties>(
+    () => ({ width: "100%", height: "100%" }),
+    [],
+  );
+
   const onCyInit = useCallback((cy: Core) => {
     cyRef.current = cy;
     setCyInstance(cy);
@@ -493,6 +506,13 @@ export function GitVisualizer({
     setIsLayoutReady(false);
 
     const onLayoutStop = () => {
+      // Fit to recent nodes after layout completes to avoid jitter
+      try {
+        const recentNodes = cyInstance.nodes("[index < 10]");
+        cyInstance.fit(recentNodes.nonempty() ? recentNodes : undefined, 30);
+      } catch {
+        // Ignore fit errors
+      }
       setIsLayoutReady(true);
     };
 
@@ -504,8 +524,6 @@ export function GitVisualizer({
         const l = cyInstance.layout(layout as any);
         if (l && typeof l.run === "function") {
           l.run();
-          const recentNodes = cyInstance.nodes("[index < 10]");
-          cyInstance.fit(recentNodes.nonempty() ? recentNodes : undefined, 30);
         } else {
           setIsLayoutReady(true);
         }
@@ -522,6 +540,41 @@ export function GitVisualizer({
   }, [elements, layout, commits, cyInstance]);
 
   const showLoading = isLoading || loading || !isLayoutReady;
+
+  // Memoized callback for SearchBar to prevent unnecessary re-renders
+  const handleSearchCommitSelect = useCallback(
+    (commit: CommitNode) => {
+      setSelectedId(commit.id);
+      setIsDiffOpen(true);
+      onCommitSelect(commit);
+      if (cyInstance) {
+        const node = cyInstance.getElementById(commit.id);
+        if (node.nonempty()) {
+          cyInstance.elements().unselect();
+          node.select();
+          cyInstance.center(node);
+        }
+      }
+    },
+    [cyInstance, onCommitSelect],
+  );
+
+  // Memoized callback for DiffDialog onExecute to prevent unnecessary re-renders
+  const handleExecute = useCallback((hash: string) => {
+    // Mark this commit as executing
+    setExecutionTime(Date.now());
+    setExecutingCommits((prev) => {
+      const next = new Set(prev);
+      next.add(hash);
+      return next;
+    });
+
+    // Also set the node data so the Cy instance can pick it up immediately
+    if (cyRef.current) {
+      const node = cyRef.current.getElementById(hash);
+      if (node && node.nonempty()) node.data("isExecuting", "true");
+    }
+  }, []);
 
   if (commits.length === 0 && !showLoading) {
     return (
@@ -546,7 +599,7 @@ export function GitVisualizer({
           stylesheet={stylesheet as any}
           layout={layout as any}
           wheelSensitivity={0.5}
-          style={{ width: "100%", height: "100%" }}
+          style={cytoscapeStyle}
         />
       </div>
 
@@ -559,29 +612,27 @@ export function GitVisualizer({
         </div>
       )}
 
+      {/* Search bar - top right, shifted past branch selector on mobile */}
       <div
         className={cn(
-          "absolute top-4 left-1/2 -translate-x-1/2 z-10 transition-opacity duration-300 flex items-center gap-2",
+          "absolute top-12 sm:top-4 right-2 sm:right-4 left-2 sm:left-auto z-10 transition-opacity duration-300",
           showLoading ? "opacity-0 pointer-events-none" : "opacity-100",
         )}
       >
         <SearchBar
           commits={commits}
-          onCommitSelect={(commit) => {
-            setSelectedId(commit.id);
-            setIsDiffOpen(true);
-            onCommitSelect(commit);
-            if (cyInstance) {
-              const node = cyInstance.getElementById(commit.id);
-              if (node.nonempty()) {
-                cyInstance.elements().unselect();
-                node.select();
-                cyInstance.center(node);
-              }
-            }
-          }}
+          onCommitSelect={handleSearchCommitSelect}
         />
-        <div className="flex items-center gap-1 bg-background/80 backdrop-blur-sm border border-border/50 p-1 rounded-md shadow-sm">
+      </div>
+
+      {/* Zoom controls - bottom right, vertical */}
+      <div
+        className={cn(
+          "absolute bottom-4 right-4 z-10 transition-opacity duration-300",
+          showLoading ? "opacity-0 pointer-events-none" : "opacity-100",
+        )}
+      >
+        <div className="flex flex-col gap-1 bg-background/80 backdrop-blur-sm border border-border/50 p-1 rounded-md shadow-sm">
           <Button
             variant="ghost"
             size="icon"
@@ -637,21 +688,7 @@ export function GitVisualizer({
         }
         apiConfiguration={apiConfiguration}
         onOpenApiManager={onOpenApiManager}
-        onExecute={(hash) => {
-          // Mark this commit as executing
-          setExecutionTime(Date.now());
-          setExecutingCommits((prev) => {
-            const next = new Set(prev);
-            next.add(hash);
-            return next;
-          });
-
-          // Also set the node data so the Cy instance can pick it up immediately
-          if (cyRef.current) {
-            const node = cyRef.current.getElementById(hash);
-            if (node && node.nonempty()) node.data("isExecuting", "true");
-          }
-        }}
+        onExecute={handleExecute}
       />
     </div>
   );
