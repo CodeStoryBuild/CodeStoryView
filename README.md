@@ -1,4 +1,4 @@
-# <img src="./resources/icon.svg" width="32" height="32" style="vertical-align: middle;" /> Codestory View
+# <img src="./resources/icon.png" width="32" height="32" style="vertical-align: middle;" /> Codestory View
 
 ![Deployment](https://img.shields.io/github/actions/workflow/status/CodeStoryBuild/CodeStoryView/publish-extension.yml?label=Deployment)
 ![Version](https://img.shields.io/github/v/tag/CodeStoryBuild/CodeStoryView?label=tag&sort=semver)
