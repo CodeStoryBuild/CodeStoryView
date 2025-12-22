@@ -5,6 +5,7 @@
   "description": "Visualizer for Codestory CLI",
   "license": "GPL-2.0-only",
   "version": "0.0.1",
+  "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -17,6 +18,7 @@
   "main": "./dist/extension.js",
   "files": [
     "dist/**",
+    "resources/**",
     "README.md",
     "LICENCE.txt",
     "CHANGELOG.md",
