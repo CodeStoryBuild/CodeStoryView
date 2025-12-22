@@ -1,3 +1,8 @@
+## V0.1.5
+- Changed: Rename google provider to googlegenai, as the Codestory CLI provider name has changed
+- Fix: only show repository state change notifications when the extension window is active
+
+
 ## V0.1.4
 
 - Add: Improved search bar UX

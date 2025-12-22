@@ -75,7 +75,7 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
     "glm-4.6",
     "kimi-k2-thinking",
   ],
-  google: [
+  googlegenai: [
     "gemini-3-pro",
     "gemini-3-flash",
     "gemini-3-deep-think",

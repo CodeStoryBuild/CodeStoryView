@@ -337,15 +337,19 @@ export function activate(context: vscode.ExtensionContext) {
 
         lastState = newState;
 
-        if (reloadReason === "git") {
-          vscode.window.showInformationMessage(
-            "Repo reloaded because of a .git change",
-          );
-        } else if (reloadReason === "workdir") {
-          vscode.window.showInformationMessage(
-            "Change in working dir, reload.",
-          );
+        if(panel.active){
+          // only show toast if they are focused on the window
+          if (reloadReason === "git") {
+            vscode.window.showInformationMessage(
+              "Repo reloaded because of a .git change",
+            );
+          } else if (reloadReason === "workdir") {
+            vscode.window.showInformationMessage(
+              "Change in working dir, reload.",
+            );
+          }
         }
+        
 
         panel.webview.postMessage({
           command: "displayOutput",
