@@ -742,8 +742,11 @@ async function runCstTool(
   args: string[],
 ): Promise<string> {
   const executable = await getExecutablePath(cstManager);
+
+  // Use execFile to pass args directly to the process without shell interpretation.
+  // This avoids all shell escaping issues.
   return new Promise((resolve, reject) => {
-    cp.exec(`"${executable}" ${args.join(" ")}`, (err, stdout, stderr) => {
+    cp.execFile(executable, args, (err, stdout, stderr) => {
       if (err) {
         if (
           (err as any).code === 127 ||
@@ -842,17 +845,38 @@ async function runCstInTerminal(
     }
     finalArgs.push(...args);
 
-    // Quote arguments that contain spaces to ensure they are parsed correctly across all shells.
-    const escapedArgs = finalArgs.map((arg) =>
-      arg.includes(" ") && !arg.startsWith('"') ? `"${arg}"` : arg,
-    );
+    // Escape arguments using single-quoted raw strings for shell safety.
+    // Single quotes treat content as literal in both PowerShell and bash/zsh.
+    // - PowerShell: internal single quotes must be doubled ('')
+    // - Bash/Zsh: internal single quotes must be escaped by ending the string,
+    //   adding an escaped quote, and starting a new string ('\'').
+    //   e.g., "it's" becomes 'it'\''s'
+    const escapeArg = (arg: string): string => {
+      // Check if argument needs quoting (contains spaces or special chars)
+      const needsQuoting = /[\s"'&|<>^$`!;(){}[\]*?~]/.test(arg);
+
+      if (!needsQuoting) {
+        return arg;
+      }
+
+      if (isPowerShell) {
+        // PowerShell: use single quotes, double any internal single quotes
+        return `'${arg.replace(/'/g, "''")}'`;
+      } else {
+        // Bash/Zsh/CMD: use single quotes, escape internal single quotes
+        // by ending the string, adding escaped quote, and starting new string
+        return `'${arg.replace(/'/g, "'\\''")}'`;
+      }
+    };
+
+    const escapedArgs = finalArgs.map(escapeArg);
     const joinedArgs = escapedArgs.join(" ");
 
     // PowerShell requires the call operator '&' to execute a quoted path.
     // Other shells (Bash, CMD, Zsh) handle quoted paths directly.
     const fullCommand = isPowerShell
-      ? `& "${executable}" ${joinedArgs}`
-      : `"${executable}" ${joinedArgs}`;
+      ? `& '${executable}' ${joinedArgs}`
+      : `'${executable}' ${joinedArgs}`;
 
     isExecuting = true;
     codestoryTerminal.sendText(fullCommand);
