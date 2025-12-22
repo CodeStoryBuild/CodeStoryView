@@ -777,12 +777,18 @@ function getWebviewContent(webview: vscode.Webview, extensionUri: vscode.Uri) {
   const styleUri = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, "dist", "webview", "index.css"),
   );
+  const baseUri =
+    webview
+      .asWebviewUri(vscode.Uri.joinPath(extensionUri, "dist", "webview"))
+      .toString() + "/";
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https:; script-src ${webview.cspSource}; style-src ${webview.cspSource} 'unsafe-inline';">
+    <base href="${baseUri}">
     <link rel="stylesheet" type="text/css" href="${styleUri}">
     <title>Codestory View</title>
 </head>
