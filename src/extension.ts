@@ -82,6 +82,10 @@ export function activate(context: vscode.ExtensionContext) {
         {
           enableScripts: true,
           retainContextWhenHidden: true,
+          localResourceRoots: [
+            vscode.Uri.joinPath(context.extensionUri, "dist"),
+            vscode.Uri.joinPath(context.extensionUri, "resources"),
+          ],
         },
       );
 
@@ -202,6 +206,18 @@ export function activate(context: vscode.ExtensionContext) {
         const args = [...prepareGlobalArgs(globalArgs)];
         args.push("commit");
 
+        // Add pathspec if present (file selection for partial commits)
+        // Pathspec comes as positional argument(s) before other command args
+        if (
+          commandArgs?.pathspec &&
+          Array.isArray(commandArgs.pathspec) &&
+          commandArgs.pathspec.length > 0
+        ) {
+          for (const path of commandArgs.pathspec) {
+            args.push(path);
+          }
+        }
+
         // Add guidance message if present
         if (commandArgs?.message) {
           args.push("-m", commandArgs.message);
@@ -250,6 +266,11 @@ export function activate(context: vscode.ExtensionContext) {
         // Command-specific expansion: for fix/expand commands, a commit_hash is a positional arg after the subcommand.
         const commitHash = commandArgs?.commit_hash;
         if (commitHash) args.push(commitHash);
+
+        // Add guidance message if present (as of cst cli 0.1.3)
+        if (commandArgs?.message) {
+          args.push("-m", commandArgs.message);
+        }
 
         panel.webview.postMessage({
           command: "displayOutput",
@@ -337,7 +358,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         lastState = newState;
 
-        if(panel.active){
+        if (panel.active) {
           // only show toast if they are focused on the window
           if (reloadReason === "git") {
             vscode.window.showInformationMessage(
@@ -349,7 +370,6 @@ export function activate(context: vscode.ExtensionContext) {
             );
           }
         }
-        
 
         panel.webview.postMessage({
           command: "displayOutput",
@@ -376,15 +396,33 @@ export function activate(context: vscode.ExtensionContext) {
         });
 
         if (pathChanged) {
-          // Watch for any changes in the .git directory (to trigger an automatic refresh)
-          const gitPattern = new vscode.RelativePattern(repoPath, ".git/**");
-          repoWatcher = vscode.workspace.createFileSystemWatcher(gitPattern);
+          // Track pending change types to dedupe and prioritize
+          let pendingGitChange = false;
+          let pendingWorkdirChange = false;
+          // Track if there were actual file changes (not just .git internal changes)
+          let pendingActualWorkdirChange = false;
 
-          const handleFileChange = async (isGitChange = false) => {
+          const handleFileChange = async () => {
             if (!activePanel) return;
 
-            if (isGitChange) {
-              // if git changes, always reload
+            const wasGitChange = pendingGitChange;
+            const wasWorkdirChange = pendingWorkdirChange;
+            const wasActualWorkdirChange = pendingActualWorkdirChange;
+
+            // Reset pending flags
+            pendingGitChange = false;
+            pendingWorkdirChange = false;
+            pendingActualWorkdirChange = false;
+
+            // Get current working dir state
+            const currentHasChanges = await hasGitChanges(repoPath);
+            const previousHasChanges =
+              lastState?.commits.some((c) => c.id === "WORKING_DIR") || false;
+            const workingDirStateChanged =
+              currentHasChanges !== previousHasChanges;
+
+            // Priority 1: Git ref changes (commits, branches, etc.) - always full reload
+            if (wasGitChange) {
               vscode.window.setStatusBarMessage(
                 "Repo State Changed, Reloading...",
                 3000,
@@ -392,59 +430,88 @@ export function activate(context: vscode.ExtensionContext) {
               const branchToUse =
                 currentViewedBranch || lastState?.currentBranch || "HEAD";
               await handleLoadRepo(panel, repoPath, branchToUse, false, "git");
-            } else {
-              const currentHasChanges = await hasGitChanges(repoPath);
-              const previousHasChanges =
-                lastState?.commits.some((c) => c.id === "WORKING_DIR") || false;
-              if (currentHasChanges !== previousHasChanges) {
-                // Status-bar and an informational popup for working-directory changes
-                vscode.window.setStatusBarMessage(
-                  "Working Directory State Changed, Reloading...",
-                  3000,
-                );
+              return; // Don't double-trigger
+            }
 
-                const branchToUse =
-                  currentViewedBranch || lastState?.currentBranch || "HEAD";
-                await handleLoadRepo(
-                  panel,
-                  repoPath,
-                  branchToUse,
-                  false,
-                  "workdir",
-                );
-              }
+            // Priority 2: Working dir state boundary crossed (appeared/disappeared)
+            if (workingDirStateChanged) {
+              vscode.window.setStatusBarMessage(
+                "Working Directory State Changed, Reloading...",
+                3000,
+              );
+              const branchToUse =
+                currentViewedBranch || lastState?.currentBranch || "HEAD";
+              await handleLoadRepo(
+                panel,
+                repoPath,
+                branchToUse,
+                false,
+                "workdir",
+              );
+              return; // Don't also send diff reload
+            }
+
+            // Priority 3: Working dir exists and actual files changed within it - just reload the diff
+            // Skip if wasWorkdirChange is true but wasActualWorkdirChange is false
+            // (this means only .git internal changes like index updates from git add)
+            if (
+              wasWorkdirChange &&
+              wasActualWorkdirChange &&
+              currentHasChanges
+            ) {
+              activePanel.webview.postMessage({
+                command: "reloadWorkingDirDiff",
+              });
             }
           };
 
-          const refresh = () => {
+          // Watch for meaningful .git changes (refs, HEAD - not index which changes on every file edit)
+          // The refs pattern catches branch/tag changes, HEAD catches checkouts
+          const gitRefsPattern = new vscode.RelativePattern(
+            repoPath,
+            ".git/{refs,HEAD,ORIG_HEAD,MERGE_HEAD,FETCH_HEAD}/**",
+          );
+          repoWatcher =
+            vscode.workspace.createFileSystemWatcher(gitRefsPattern);
+
+          const gitRefresh = () => {
+            pendingGitChange = true;
             if (debounceTimer) {
               clearTimeout(debounceTimer);
             }
-            debounceTimer = setTimeout(() => handleFileChange(true), 1000);
+            debounceTimer = setTimeout(() => handleFileChange(), 1000);
           };
 
-          repoWatcher.onDidChange(refresh);
-          repoWatcher.onDidCreate(refresh);
-          repoWatcher.onDidDelete(refresh);
+          repoWatcher.onDidChange(gitRefresh);
+          repoWatcher.onDidCreate(gitRefresh);
+          repoWatcher.onDidDelete(gitRefresh);
 
-          // Watch for changes outside of .git
+          // Watch for changes outside of .git (working directory changes)
           const allPattern = new vscode.RelativePattern(repoPath, "**");
           nonRepoWatcher = vscode.workspace.createFileSystemWatcher(allPattern);
 
           const nonRepoRefresh = (uri?: vscode.Uri) => {
             const fsPath = uri?.fsPath || repoPath;
-            // If the change is inside .git, ignore it here
+            // If the change is inside .git, ignore it here - set pendingWorkdirChange
+            // but not pendingActualWorkdirChange (so we won't reload the diff)
             const rel = path.relative(repoPath, fsPath);
-            if (rel.split(path.sep)[0] === ".git") return;
-
-            if (nonRepoDebounceTimer) {
-              clearTimeout(nonRepoDebounceTimer);
+            if (rel.split(path.sep)[0] === ".git") {
+              // Still mark as workdir change for debouncing purposes, but not actual
+              pendingWorkdirChange = true;
+              if (debounceTimer) {
+                clearTimeout(debounceTimer);
+              }
+              debounceTimer = setTimeout(() => handleFileChange(), 1000);
+              return;
             }
 
-            nonRepoDebounceTimer = setTimeout(
-              () => handleFileChange(false),
-              1000,
-            );
+            pendingWorkdirChange = true;
+            pendingActualWorkdirChange = true;
+            // Use the same debounce timer to coalesce with any git changes
+            if (debounceTimer) {
+              clearTimeout(debounceTimer);
+            }
+            debounceTimer = setTimeout(() => handleFileChange(), 1000);
           };
 
           nonRepoWatcher.onDidChange(nonRepoRefresh);

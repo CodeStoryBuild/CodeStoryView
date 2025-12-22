@@ -1,4 +1,5 @@
-# Codestory View
+# <img src="./resources/icon.svg" width="32" height="32" style="vertical-align: middle;" /> Codestory View
+
 ![Deployment](https://img.shields.io/github/actions/workflow/status/CodeStoryBuild/CodeStoryView/publish-extension.yml?label=Deployment)
 ![Version](https://img.shields.io/github/v/tag/CodeStoryBuild/CodeStoryView?label=tag&sort=semver)
 
@@ -7,12 +8,11 @@ Codestory View is a Visual Studio Code extension that helps you turn large, mess
 We automatically download the Codestory CLI on your first run. This extension exposes its functionality through a simple, focused UI, includes an interactive webview graph, semantic search, and direct CLI integration to clean and split large commits. Think of Codestory View as a desktop UI for the Codestory CLI — similar to how GitHub Desktop provides a UI for Git.
 
 ---
-
 ## Demo
 
 Watch a short demonstration showing how the extension converts a large working directory into a series of clean commits:
 
-[![Demo Video](https://img.youtube.com/vi/RjSJ25P0LhY/hqdefault.jpg)](https://youtu.be/RjSJ25P0LhY)
+[![Demo Video](https://img.youtube.com/vi/Zk7wX5yWVgM/hqdefault.jpg)](https://youtu.be/Zk7wX5yWVgM)
 
 ---
 
