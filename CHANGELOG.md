@@ -6,6 +6,7 @@
 - Changed: Bump Codestory Cli version to 0.1.6
 
 ## V0.1.5
+
 - Add: Add company logo to extension
 - Add: The codestory fix command also now supports a guidance message
 - Feat: When using the codestory commit command, you can now select which files you would like to commit
@@ -15,7 +16,6 @@
 - Fix: only show repository state change notifications when the extension window is active
 - Fix: Improve UI performance through caching heavy operations
 - Fix: When running Codestory commands strings are now escaped to avoid console errors
-
 
 ## V0.1.4
 

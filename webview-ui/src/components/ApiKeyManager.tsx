@@ -15,13 +15,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Eye,
   EyeOff,
@@ -285,27 +279,23 @@ export function ApiKeyManager({
   return (
     <div className="fixed bottom-16 left-2 sm:left-4 right-2 sm:right-auto z-50 animate-in slide-in-from-bottom-2 duration-200 sm:max-w-[calc(100vw-2rem)]">
       <Card className="w-full sm:w-96 max-w-full shadow-xl border border-border bg-card/95 backdrop-blur-md flex flex-col max-h-[calc(100vh-8rem)] gap-0 py-0 overflow-hidden">
-        <CardHeader className="pt-3 sm:pt-4 pb-2 px-3 shrink-0 border-b relative">
-          <div className="flex items-center justify-between">
-            {/* Title now has 0 height impact */}
-            <CardTitle
-              className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider opacity-70 flex-1 text-center leading-none"
-              style={titleStyle}
-            >
-              Run Config
-            </CardTitle>
+        <div className="py-0 px-3 shrink-0 border-b relative min-h-0 h-7 flex items-center justify-center">
+          <CardTitle
+            className="text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider opacity-70 leading-none"
+            style={titleStyle}
+          >
+            Run Config
+          </CardTitle>
 
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onOpenChange(false)}
-              /* CHANGED: top-1 instead of top-4, and h-5 instead of h-6 */
-              className="h-5 w-5 opacity-50 hover:opacity-100 absolute right-2 top-1"
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
-        </CardHeader>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => onOpenChange(false)}
+            className="h-5 w-5 opacity-50 hover:opacity-100 absolute right-2 top-1/2 -translate-y-1/2"
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
 
         <CardContent className="p-0 flex flex-col flex-1 min-h-0">
           <div className="flex-1 min-h-0 overflow-y-auto">

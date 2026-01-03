@@ -101,7 +101,7 @@ export function DiffDialog({
       if (preservedSelectionRef.current) {
         const preserved = preservedSelectionRef.current;
         const restoredSelection = new Set(
-          parsedFiles.filter((file) => preserved.has(file))
+          parsedFiles.filter((file) => preserved.has(file)),
         );
         // If preserved selection had files but none remain, select all new ones
         // Otherwise keep the intersection (could be empty if user had deselected all)
@@ -165,6 +165,8 @@ export function DiffDialog({
     if (open && commit && repoPath) {
       setLoading(true);
       setError(null);
+      setRawDiff("");
+      setSelectedFiles(new Set());
       setGuidanceMessage("");
       setIntentMessage("");
       vscode.postMessage({
@@ -249,7 +251,7 @@ export function DiffDialog({
     if (
       isCommit &&
       !intent &&
-      localApiConfiguration?.globalConfig?.relevance_filter_level
+      localApiConfiguration?.globalConfig?.relevance_filtering
     ) {
       setShowIntentDialog(true);
       return;
@@ -502,9 +504,10 @@ export function DiffDialog({
                             className={`
                               flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono whitespace-nowrap
                               border transition-all cursor-pointer shrink-0
-                              ${selectedFiles.has(file)
-                                ? "bg-primary/10 border-primary/30 text-primary"
-                                : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
+                              ${
+                                selectedFiles.has(file)
+                                  ? "bg-primary/10 border-primary/30 text-primary"
+                                  : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
                               }
                             `}
                           >
@@ -552,8 +555,9 @@ export function DiffDialog({
                           disabled={isAnyExecuting}
                         >
                           <RotateCcw
-                            className={`h-3 w-3 ${isCurrentExecuting ? "animate-spin" : ""
-                              }`}
+                            className={`h-3 w-3 ${
+                              isCurrentExecuting ? "animate-spin" : ""
+                            }`}
                           />
                           Fix
                         </Button>

@@ -48,7 +48,7 @@ export function GitRepoSelector({
             value={repoPath}
             onChange={(e) => setRepoPath(e.target.value)}
             placeholder="Repository path"
-            className="w-32 sm:w-48 md:w-64 h-8 text-xs bg-transparent border-none shadow-none focus-visible:ring-0"
+            className="w-32 sm:w-48 md:w-64 h-8 text-xs bg-transparent border-none shadow-none focus-visible:ring-0 rounded-full"
           />
           <Button
             onClick={handleLoad}
