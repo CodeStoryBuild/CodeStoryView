@@ -90,7 +90,6 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
   ],
   lmstudio: [],
   cerebras: [
-    "llama-3.3-70b",
     "llama3.1-8b",
     "zai-glm-4.6",
     "qwen3-32b",

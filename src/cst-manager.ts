@@ -6,7 +6,7 @@ import AdmZip from "adm-zip";
 import * as tar from "tar";
 import { pipeline } from "stream/promises";
 
-const MINIMUM_CST_VERSION = "0.1.3";
+const MINIMUM_CST_VERSION = "0.1.6";
 
 interface Asset {
   name: string;
@@ -189,6 +189,25 @@ export class CstManager {
 
     // Cleanup download
     fs.unlinkSync(downloadPath);
+
+    // Cleanup old versions
+    try {
+      const dirs = fs.readdirSync(this.storageUri.fsPath);
+      for (const d of dirs) {
+        const dirPath = path.join(this.storageUri.fsPath, d);
+        if (
+          fs.statSync(dirPath).isDirectory() &&
+          d.startsWith("v") &&
+          semver.valid(d.substring(1)) &&
+          d !== latestRelease.tag_name &&
+          d !== `v${latestRelease.tag_name}`
+        ) {
+          fs.rmSync(dirPath, { recursive: true, force: true });
+        }
+      }
+    } catch (err) {
+      console.error("Failed to cleanup old versions:", err);
+    }
 
     return this.getLocalExePath();
   }
