@@ -7,8 +7,8 @@
   "version": "0.0.1",
   "icon": "resources/icon.png",
   "repository": {
-  "type": "git",
-  "url": "https://github.com/CodeStoryBuild/CodeStoryView.git"
+    "type": "git",
+    "url": "https://github.com/CodeStoryBuild/CodeStoryView.git"
   },
   "engines": {
     "vscode": "^1.90.0"
