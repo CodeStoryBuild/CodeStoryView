@@ -158,14 +158,20 @@ export const GLOBAL_OPTIONS: Record<string, ConfigOption> = {
     min: 1,
     is_int: true,
   },
-  relevance_filter_level: {
-    type: "literal",
-    description: "How much to filter for irrelevant changes",
-    allowed: ["safe", "standard", "strict"],
+  relevance_filtering: {
+    type: "boolean",
+    description: "Enable filtering changes by relevance. Commit Command Only",
+  },
+  relevance_filter_similarity_threshold: {
+    type: "number",
+    description:
+      "How strict should relevance filtering be? Higher means more changes will be filtered",
+    min: 0.0,
+    max: 1.0,
   },
   secret_scanner_aggression: {
     type: "literal",
-    description: "How aggresively to scan for secrets ('cst commit' only)",
+    description: "How aggresively to scan for secrets. Commit Command Only",
     allowed: ["safe", "standard", "strict"],
   },
   fallback_grouping_strategy: {

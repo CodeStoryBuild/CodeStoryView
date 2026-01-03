@@ -1,3 +1,10 @@
+## V0.1.6
+
+- Changed: Remove relevance_filtering_level option as it has been changed to two separate options
+  1. relevance_filtering: toggle on and off
+  2. relevance_filtering_threshold: how strict relevance filtering should be
+- Changed: Bump Codestory Cli version to 0.1.6
+
 ## V0.1.5
 - Add: Add company logo to extension
 - Add: The codestory fix command also now supports a guidance message

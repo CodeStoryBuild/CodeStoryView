@@ -142,7 +142,9 @@ export function activate(context: vscode.ExtensionContext) {
         api_base: "--api-base",
         temperature: "--temperature",
         max_tokens: "--max-tokens",
-        relevance_filter_level: "--relevance-filter-level",
+        relevance_filtering: "--relevance-filtering",
+        relevance_filter_similarity_threshold:
+          "--relevance-filter-similarity-threshold",
         secret_scanner_aggression: "--secret-scanner-aggression",
         fallback_grouping_strategy: "--fallback-grouping-strategy",
         chunking_level: "--chunking-level",
@@ -267,7 +269,7 @@ export function activate(context: vscode.ExtensionContext) {
         const commitHash = commandArgs?.commit_hash;
         if (commitHash) args.push(commitHash);
 
-        // Add guidance message if present (as of cst cli 0.1.3)
+        // Add guidance message if present
         if (commandArgs?.message) {
           args.push("-m", commandArgs.message);
         }
