@@ -30,11 +30,11 @@ export function activate(context: vscode.ExtensionContext) {
   let nonRepoDebounceTimer: NodeJS.Timeout | undefined;
   let lastState:
     | {
-      branches: string[];
-      currentBranch: string | undefined;
-      isDetached: boolean;
-      commits: any[];
-    }
+        branches: string[];
+        currentBranch: string | undefined;
+        isDetached: boolean;
+        commits: any[];
+      }
     | undefined;
 
   context.subscriptions.push(
@@ -194,7 +194,7 @@ export function activate(context: vscode.ExtensionContext) {
         return args;
       };
 
-      const runVibeCommandCommit = async (params: {
+      const runCodestoryCommandCommit = async (params: {
         repoPath: string;
         branch?: string;
         globalArgs?: Record<string, any>;
@@ -248,7 +248,7 @@ export function activate(context: vscode.ExtensionContext) {
         );
       };
 
-      const runVibeCommandFix = async (params: {
+      const runCodestoryCommandFix = async (params: {
         repoPath: string;
         branch?: string;
         commandArgs?: Record<string, any>;
@@ -297,7 +297,12 @@ export function activate(context: vscode.ExtensionContext) {
         panel: vscode.WebviewPanel,
         repoPath: string,
         branch?: string,
-        source: "initial" | "manual" | "git" | "workdir" | "load_more" = "manual",
+        source:
+          | "initial"
+          | "manual"
+          | "git"
+          | "workdir"
+          | "load_more" = "manual",
         limit: number = 100,
       ) {
         if (!repoPath) throw new Error("Please specify a directory path.");
@@ -351,17 +356,21 @@ export function activate(context: vscode.ExtensionContext) {
           hasMore,
         };
 
-
         const stateChanged =
           !lastState ||
           JSON.stringify(lastState.branches) !==
-          JSON.stringify(newState.branches) ||
+            JSON.stringify(newState.branches) ||
           lastState.currentBranch !== newState.currentBranch ||
           lastState.isDetached !== newState.isDetached ||
           JSON.stringify(lastState.commits) !==
-          JSON.stringify(newState.commits);
+            JSON.stringify(newState.commits);
 
-        if (source !== "manual" && source !== "initial" && source !== "load_more" && !stateChanged) {
+        if (
+          source !== "manual" &&
+          source !== "initial" &&
+          source !== "load_more" &&
+          !stateChanged
+        ) {
           // No changes and not a manual/initial/load_more refresh, skip updating webview
           return;
         }
@@ -401,7 +410,6 @@ export function activate(context: vscode.ExtensionContext) {
           hasMore,
           source,
         });
-
 
         panel.webview.postMessage({
           command: "displayOutput",
@@ -454,12 +462,7 @@ export function activate(context: vscode.ExtensionContext) {
               );
               const branchToUse =
                 currentViewedBranch || lastState?.currentBranch || "HEAD";
-              await handleLoadRepo(
-                panel,
-                repoPath,
-                branchToUse,
-                "workdir",
-              );
+              await handleLoadRepo(panel, repoPath, branchToUse, "workdir");
               return; // Don't also send diff reload
             }
 
@@ -577,14 +580,15 @@ export function activate(context: vscode.ExtensionContext) {
                 const command = "-SL";
                 const executable = await getExecutablePath(cstManager, panel);
 
-                const configStr =
-                  await context.secrets.get("vibe_global_config");
+                const configStr = await context.secrets.get(
+                  "Codestory_global_config",
+                );
                 let apiKey: string | undefined;
                 if (configStr) {
                   try {
                     const config = JSON.parse(configStr);
                     apiKey = config.api_key;
-                  } catch (e) { }
+                  } catch (e) {}
                 }
 
                 await runCstInTerminal(
@@ -644,7 +648,9 @@ export function activate(context: vscode.ExtensionContext) {
               return;
 
             case "getGlobalConfig":
-              const configStr = await context.secrets.get("vibe_global_config");
+              const configStr = await context.secrets.get(
+                "Codestory_global_config",
+              );
               let config = {};
               if (configStr) {
                 try {
@@ -676,18 +682,18 @@ export function activate(context: vscode.ExtensionContext) {
             case "setGlobalConfig":
               if (message.config) {
                 await context.secrets.store(
-                  "vibe_global_config",
+                  "Codestory_global_config",
                   JSON.stringify(message.config),
                 );
               } else {
-                await context.secrets.delete("vibe_global_config");
+                await context.secrets.delete("Codestory_global_config");
               }
               return;
 
-            case "runVibeCommandCommit":
+            case "runCodestoryCommandCommit":
               try {
                 const { repoPath, branch, globalArgs, commandArgs } = message;
-                await runVibeCommandCommit({
+                await runCodestoryCommandCommit({
                   repoPath,
                   branch,
                   globalArgs,
@@ -703,10 +709,10 @@ export function activate(context: vscode.ExtensionContext) {
               }
               return;
 
-            case "runVibeCommandFix":
+            case "runCodestoryCommandFix":
               try {
                 const { repoPath, branch, globalArgs, commandArgs } = message;
-                await runVibeCommandFix({
+                await runCodestoryCommandFix({
                   repoPath,
                   branch,
                   commandArgs,
