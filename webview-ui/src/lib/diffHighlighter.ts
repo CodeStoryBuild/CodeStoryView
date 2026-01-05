@@ -4,7 +4,7 @@
  */
 
 const UNIVERSAL_REGEX =
-    /(?<comment>\/\/.*|\/\*[\s\S]*?\*\/|#.*)|(?<string>"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*')|(?<keyword>\b(?:if|else|for|while|return|class|def|function|var|let|const|import|from|public|private|static)\b)|(?<number>\b\d+(\.\d+)?\b)|(?<operator>[+\-*\/%&|^!<>]=?|==|=>)|(?<call>\b\w+(?=\())/g;
+  /(?<comment>\/\/.*|\/\*[\s\S]*?\*\/|#.*)|(?<string>"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*')|(?<keyword>\b(?:if|else|for|while|return|class|def|function|var|let|const|import|from|public|private|static)\b)|(?<number>\b\d+(\.\d+)?\b)|(?<operator>[+\-*\/%&|^!<>]=?|==|=>)|(?<call>\b\w+(?=\())/g;
 
 export class DiffHighlighter {
     /**
