@@ -32,6 +32,13 @@ import {
 } from "@/components/ui/tooltip";
 import { getVsCodeApi } from "@/lib/vscode";
 
+const getCanonicalPath = (file: { newName?: string; oldName?: string }) => {
+  if (file.newName === "/dev/null") {
+    return file.oldName || "unknown";
+  }
+  return file.newName || file.oldName || "unknown";
+};
+
 export function DiffDialog({
   open,
   onOpenChange,
@@ -87,7 +94,9 @@ export function DiffDialog({
     if (!rawDiff) return [];
     try {
       const files = parseDiff(rawDiff);
-      return files.map(f => f.newName || f.oldName || "unknown").filter(f => f !== "unknown");
+      return files
+        .map((f) => getCanonicalPath(f))
+        .filter((f) => f !== "unknown");
     } catch {
       return [];
     }
@@ -229,18 +238,35 @@ export function DiffDialog({
       const displayedFiles = allFiles.slice(0, visibleFiles);
 
       return displayedFiles.map((file, fileIdx) => {
-        const filePath = file.newName || file.oldName || "unknown";
+        const filePath = getCanonicalPath(file);
         const isDeleted = file.newName === "/dev/null";
         const isNew = file.oldName === "/dev/null";
-        const fileTypeLabel = isDeleted ? "deleted" : isNew ? "added" : "modified";
+        const fileTypeLabel = isDeleted
+          ? "deleted"
+          : isNew
+            ? "added"
+            : "modified";
 
         return (
-          <div key={`${filePath}-${fileIdx}`} className="mb-6 border border-border rounded-md overflow-hidden bg-background shadow-sm">
+          <div
+            key={`${filePath}-${fileIdx}`}
+            className="mb-6 border border-border rounded-md overflow-hidden bg-background shadow-sm"
+          >
             <div className="bg-muted/50 px-3 py-1.5 border-b border-border flex items-center justify-between">
-              <span className="font-mono text-[11px] truncate opacity-80">{filePath}</span>
-              <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${isNew ? "bg-emerald-500/20 text-emerald-400" :
-                  isDeleted ? "bg-rose-500/20 text-rose-400" : "bg-blue-500/10 text-blue-400"
-                }`}>{fileTypeLabel}</span>
+              <span className="font-mono text-[11px] truncate opacity-80">
+                {filePath}
+              </span>
+              <span
+                className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${
+                  isNew
+                    ? "bg-emerald-500/20 text-emerald-400"
+                    : isDeleted
+                      ? "bg-rose-500/20 text-rose-400"
+                      : "bg-blue-500/10 text-blue-400"
+                }`}
+              >
+                {fileTypeLabel}
+              </span>
             </div>
             <div className="divide-y divide-border/30">
               {file.blocks.map((block, blockIdx) => (
@@ -249,12 +275,21 @@ export function DiffDialog({
                     {block.header}
                   </div>
                   {block.lines.map((line, lineIdx) => {
-                    const highlitContent = DiffHighlighter.highlight(line.content);
-                    const typeClass = line.type === "insert" ? "bg-emerald-500/10 text-emerald-300/90" :
-                      line.type === "delete" ? "bg-rose-500/10 text-rose-300/90" : "hover:bg-muted/10";
+                    const highlitContent = DiffHighlighter.highlight(
+                      line.content,
+                    );
+                    const typeClass =
+                      line.type === "insert"
+                        ? "bg-emerald-500/10 text-emerald-300/90"
+                        : line.type === "delete"
+                          ? "bg-rose-500/10 text-rose-300/90"
+                          : "hover:bg-muted/10";
 
                     return (
-                      <div key={lineIdx} className={`flex font-mono text-[11px] leading-relaxed group border-b last:border-b-0 border-border/5 ${typeClass}`}>
+                      <div
+                        key={lineIdx}
+                        className={`flex font-mono text-[11px] leading-relaxed group border-b last:border-b-0 border-border/5 ${typeClass}`}
+                      >
                         <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
                           {line.oldNumber || ""}
                         </div>
@@ -290,7 +325,7 @@ export function DiffDialog({
     }
   }, [rawDiff, visibleFiles]);
 
-  const handleVibeCommand = (command: string, intent?: string) => {
+  const handleCodestoryCommand = (command: string, intent?: string) => {
     const isCommit = command === "commit";
 
     if (isCommit && parsedFiles.length > 0 && noFilesSelected) {
@@ -328,7 +363,9 @@ export function DiffDialog({
     };
 
     const payload: any = {
-      command: isCommit ? "runVibeCommandCommit" : "runVibeCommandFix",
+      command: isCommit
+        ? "runCodestoryCommandCommit"
+        : "runCodestoryCommandFix",
       repoPath,
       branch,
       globalArgs,
@@ -464,9 +501,13 @@ export function DiffDialog({
                           <TooltipTrigger asChild>
                             <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                           </TooltipTrigger>
-                          <TooltipContent side="bottom" className="max-w-[250px]">
-                            Optionally provide a guidance message to the LLM so it
-                            can better understand the "why" behind your changes
+                          <TooltipContent
+                            side="bottom"
+                            className="max-w-[250px]"
+                          >
+                            Optionally provide a guidance message to the LLM so
+                            it can better understand the "why" behind your
+                            changes
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -479,7 +520,7 @@ export function DiffDialog({
                               variant="outline"
                               size="sm"
                               className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
-                              onClick={() => handleVibeCommand("commit")}
+                              onClick={() => handleCodestoryCommand("commit")}
                               disabled={
                                 isAnyExecuting ||
                                 (parsedFiles.length > 0 && noFilesSelected)
@@ -558,10 +599,11 @@ export function DiffDialog({
                             className={`
                                 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono whitespace-nowrap
                                 border transition-all cursor-pointer shrink-0
-                                ${selectedFiles.has(file)
-                                ? "bg-primary/10 border-primary/30 text-primary"
-                                : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
-                              }
+                                ${
+                                  selectedFiles.has(file)
+                                    ? "bg-primary/10 border-primary/30 text-primary"
+                                    : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
+                                }
                               `}
                           >
                             {selectedFiles.has(file) ? (
@@ -607,12 +649,13 @@ export function DiffDialog({
                             variant="outline"
                             size="sm"
                             className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
-                            onClick={() => handleVibeCommand("expand")}
+                            onClick={() => handleCodestoryCommand("expand")}
                             disabled={isAnyExecuting}
                           >
                             <RotateCcw
-                              className={`h-3 w-3 ${isCurrentExecuting ? "animate-spin" : ""
-                                }`}
+                              className={`h-3 w-3 ${
+                                isCurrentExecuting ? "animate-spin" : ""
+                              }`}
                             />
                             Fix
                           </Button>
@@ -649,11 +692,13 @@ export function DiffDialog({
                     className="py-12 flex flex-col items-center justify-center gap-3 opacity-60 hover:opacity-100 transition-opacity border-t border-border/30 mt-8"
                   >
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                    <span className="text-[10px] uppercase tracking-widest font-bold">Loading more files...</span>
+                    <span className="text-[10px] uppercase tracking-widest font-bold">
+                      Loading more files...
+                    </span>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setVisibleFiles(prev => prev + 10)}
+                      onClick={() => setVisibleFiles((prev) => prev + 10)}
                       className="h-7 text-[10px] mt-2"
                     >
                       Show More
@@ -684,7 +729,7 @@ export function DiffDialog({
               onChange={(e) => setIntentMessage(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && intentMessage.trim()) {
-                  handleVibeCommand("commit", intentMessage);
+                  handleCodestoryCommand("commit", intentMessage);
                 }
               }}
             />
@@ -697,10 +742,10 @@ export function DiffDialog({
               Cancel
             </Button>
             <Button
-              onClick={() => handleVibeCommand("commit", intentMessage)}
+              onClick={() => handleCodestoryCommand("commit", intentMessage)}
               disabled={!intentMessage.trim()}
             >
-              Run Vibe
+              Run Commit
             </Button>
           </div>
         </DialogContent>

@@ -175,14 +175,15 @@ export function GitVisualizer({
                   author: "system",
                   date: "",
                   parents: [],
-                  kind: "load_more"
+                  kind: "load_more",
                 } as any);
                 // Make it a parent of the oldest commit in the current batch
-                oldestCommit.parents = [...(oldestCommit.parents || []), "LOAD_MORE"];
+                oldestCommit.parents = [
+                  ...(oldestCommit.parents || []),
+                  "LOAD_MORE",
+                ];
               }
             }
-
-
 
             setCommits(processed);
             lastReloadSourceRef.current = message.source || "manual";
@@ -567,7 +568,11 @@ export function GitVisualizer({
     const onLayoutStop = () => {
       // If we are loading more, center on the anchor node instead of fitting everything
       try {
-        if (lastReloadSourceRef.current === "load_more" && anchorNodeIdRef.current && cyInstance) {
+        if (
+          lastReloadSourceRef.current === "load_more" &&
+          anchorNodeIdRef.current &&
+          cyInstance
+        ) {
           const node = cyInstance.getElementById(anchorNodeIdRef.current);
           if (node.nonempty()) {
             cyInstance.center(node);

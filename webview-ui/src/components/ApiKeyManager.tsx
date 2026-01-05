@@ -53,9 +53,9 @@ import {
 } from "@/lib/constants";
 
 const STORAGE_KEYS = {
-  PROVIDER: "vibe_selected_provider",
-  MODEL: "vibe_selected_model",
-  GLOBAL_CONFIG: "vibe_global_config",
+  PROVIDER: "Codestory_selected_provider",
+  MODEL: "Codestory_selected_model",
+  GLOBAL_CONFIG: "Codestory_global_config",
 };
 
 export function ApiKeyManager({

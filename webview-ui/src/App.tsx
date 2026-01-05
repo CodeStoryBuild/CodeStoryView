@@ -58,8 +58,9 @@ function App() {
 
   // Initialize API configuration from localStorage and extension SecretStorage
   useEffect(() => {
-    const savedProvider = localStorage.getItem("vibe_selected_provider") || "";
-    const savedModel = localStorage.getItem("vibe_selected_model") || "";
+    const savedProvider =
+      localStorage.getItem("Codestory_selected_provider") || "";
+    const savedModel = localStorage.getItem("Codestory_selected_model") || "";
 
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
@@ -219,7 +220,6 @@ function App() {
             ) {
               setIsLoading(true);
             }
-
           }
           break;
         case "displayDiff":

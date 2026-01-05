@@ -82,11 +82,11 @@ export function SearchBar({
                 ))}
                 {commits.length > 50 && (
                   <div className="px-2 py-3 text-[10px] text-center text-muted-foreground border-t border-border/50 italic">
-                    Showing first 50 results. Use more specific keywords to filter...
+                    Showing first 50 results. Use more specific keywords to
+                    filter...
                   </div>
                 )}
               </CommandGroup>
-
             </CommandList>
           </div>
         )}
