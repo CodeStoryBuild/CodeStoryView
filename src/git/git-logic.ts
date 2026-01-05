@@ -87,7 +87,8 @@ export async function hasGitChanges(repoPath: string): Promise<boolean> {
 export async function fetchCommits(
   repoPath: string,
   branch: string = "HEAD",
-): Promise<Commit[]> {
+  limit: number = 100,
+): Promise<{ commits: Commit[]; hasMore: boolean }> {
   try {
     // Include parent hashes (%P) to build a proper DAG client-side
     let logOutput = "";
@@ -98,7 +99,7 @@ export async function fetchCommits(
           "log",
           branch,
           "--pretty=format:%H|%h|%s|%an|%ai|%P",
-          "--max-count=100", // max 100 commits
+          `--max-count=${limit + 1}`,
         ],
         { allowErrors: false },
       );
@@ -108,37 +109,39 @@ export async function fetchCommits(
         msg.includes("unknown revision") ||
         msg.includes("ambiguous argument")
       ) {
-        return [];
+        return { commits: [], hasMore: false };
       }
       throw error;
     }
 
     if (!logOutput.trim()) {
-      return [];
+      return { commits: [], hasMore: false };
     }
 
-    const commits: Commit[] = logOutput
-      .split("\n")
-      .filter((line) => line.trim())
-      .map((line) => {
-        const [hash, shortHash, message, author, date, parentsStr] =
-          line.split("|");
-        const parents = (parentsStr || "")
-          .split(" ")
-          .map((p) => p.trim())
-          .filter((p) => p.length > 0);
+    const lines = logOutput.split("\n").filter((line) => line.trim());
+    const hasMore = lines.length > limit;
+    const linesToProcess = hasMore ? lines.slice(0, limit) : lines;
 
-        return {
-          id: hash,
-          label: shortHash,
-          hash,
-          message,
-          author,
-          date,
-          parents,
-          isWorkingDir: false,
-        };
-      });
+    const commits: Commit[] = linesToProcess.map((line) => {
+
+      const [hash, shortHash, message, author, date, parentsStr] =
+        line.split("|");
+      const parents = (parentsStr || "")
+        .split(" ")
+        .map((p) => p.trim())
+        .filter((p) => p.length > 0);
+
+      return {
+        id: hash,
+        label: shortHash,
+        hash,
+        message,
+        author,
+        date,
+        parents,
+        isWorkingDir: false,
+      };
+    });
 
     // Detect uncommitted working directory changes and append a pseudo-commit at the end
     try {
@@ -168,7 +171,7 @@ export async function fetchCommits(
       // If status fails (e.g., not a git repo), ignore silently
     }
 
-    return commits;
+    return { commits, hasMore };
   } catch (error) {
     throw new Error((error as any).message || "Failed to fetch commits");
   }

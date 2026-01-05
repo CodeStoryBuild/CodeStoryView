@@ -30,11 +30,11 @@ export function activate(context: vscode.ExtensionContext) {
   let nonRepoDebounceTimer: NodeJS.Timeout | undefined;
   let lastState:
     | {
-        branches: string[];
-        currentBranch: string | undefined;
-        isDetached: boolean;
-        commits: any[];
-      }
+      branches: string[];
+      currentBranch: string | undefined;
+      isDetached: boolean;
+      commits: any[];
+    }
     | undefined;
 
   context.subscriptions.push(
@@ -297,10 +297,12 @@ export function activate(context: vscode.ExtensionContext) {
         panel: vscode.WebviewPanel,
         repoPath: string,
         branch?: string,
-        isManual = true,
-        reloadReason?: "git" | "workdir",
+        source: "initial" | "manual" | "git" | "workdir" | "load_more" = "manual",
+        limit: number = 100,
       ) {
         if (!repoPath) throw new Error("Please specify a directory path.");
+
+        panel.webview.postMessage({ command: "loading" });
 
         const pathChanged = watchedRepoPath !== repoPath;
         currentViewedBranch = branch;
@@ -335,26 +337,32 @@ export function activate(context: vscode.ExtensionContext) {
           currentBranch = branches[0];
         }
 
-        const commits = await fetchCommits(repoPath, branch || "HEAD");
+        const { commits, hasMore } = await fetchCommits(
+          repoPath,
+          branch || "HEAD",
+          limit,
+        );
 
         const newState = {
           branches,
           currentBranch,
           isDetached,
           commits,
+          hasMore,
         };
+
 
         const stateChanged =
           !lastState ||
           JSON.stringify(lastState.branches) !==
-            JSON.stringify(newState.branches) ||
+          JSON.stringify(newState.branches) ||
           lastState.currentBranch !== newState.currentBranch ||
           lastState.isDetached !== newState.isDetached ||
           JSON.stringify(lastState.commits) !==
-            JSON.stringify(newState.commits);
+          JSON.stringify(newState.commits);
 
-        if (!isManual && !stateChanged) {
-          // No changes and not a manual refresh, skip updating webview
+        if (source !== "manual" && source !== "initial" && source !== "load_more" && !stateChanged) {
+          // No changes and not a manual/initial/load_more refresh, skip updating webview
           return;
         }
 
@@ -362,11 +370,11 @@ export function activate(context: vscode.ExtensionContext) {
 
         if (panel.active) {
           // only show toast if they are focused on the window
-          if (reloadReason === "git") {
+          if (source === "git") {
             vscode.window.showInformationMessage(
               "Repo reloaded because of a .git change",
             );
-          } else if (reloadReason === "workdir") {
+          } else if (source === "workdir") {
             vscode.window.showInformationMessage(
               "Change in working dir, reload.",
             );
@@ -384,13 +392,16 @@ export function activate(context: vscode.ExtensionContext) {
           currentBranch,
           isDetached,
           shouldUpdate: !branch,
-          isManual: isManual,
+          isManual: source === "manual" || source === "initial",
         });
 
         panel.webview.postMessage({
           command: "displayCommits",
           commits,
+          hasMore,
+          source,
         });
+
 
         panel.webview.postMessage({
           command: "displayOutput",
@@ -431,7 +442,7 @@ export function activate(context: vscode.ExtensionContext) {
               );
               const branchToUse =
                 currentViewedBranch || lastState?.currentBranch || "HEAD";
-              await handleLoadRepo(panel, repoPath, branchToUse, false, "git");
+              await handleLoadRepo(panel, repoPath, branchToUse, "git");
               return; // Don't double-trigger
             }
 
@@ -447,7 +458,6 @@ export function activate(context: vscode.ExtensionContext) {
                 panel,
                 repoPath,
                 branchToUse,
-                false,
                 "workdir",
               );
               return; // Don't also send diff reload
@@ -574,7 +584,7 @@ export function activate(context: vscode.ExtensionContext) {
                   try {
                     const config = JSON.parse(configStr);
                     apiKey = config.api_key;
-                  } catch (e) {}
+                  } catch (e) { }
                 }
 
                 await runCstInTerminal(
@@ -604,7 +614,8 @@ export function activate(context: vscode.ExtensionContext) {
                   panel,
                   message.directory,
                   message.branch,
-                  message.isManual !== false,
+                  message.source || "manual",
+                  message.limit,
                 );
               } catch (error) {
                 panel.webview.postMessage({
