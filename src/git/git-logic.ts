@@ -123,7 +123,6 @@ export async function fetchCommits(
     const linesToProcess = hasMore ? lines.slice(0, limit) : lines;
 
     const commits: Commit[] = linesToProcess.map((line) => {
-
       const [hash, shortHash, message, author, date, parentsStr] =
         line.split("|");
       const parents = (parentsStr || "")
