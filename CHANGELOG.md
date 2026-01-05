@@ -1,3 +1,10 @@
+## V0.1.8
+
+- Feat: Syntax highlighting for diff viewer
+- Changed: Rename some old references from Vibe to Codestory
+- Changed: Bump Codestory Cli version to 0.1.9
+- Fix: Use canonical path for file names (ie old path for deleted files)
+
 ## V0.1.7
 
 - Add: Incremental commit loading for large repositories
