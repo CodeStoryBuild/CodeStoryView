@@ -54,7 +54,7 @@ export function SearchBar({
                 No commits found.
               </CommandEmpty>
               <CommandGroup heading="Commits" className="px-1 pb-2">
-                {commits.map((commit) => (
+                {commits.slice(0, 50).map((commit) => (
                   <CommandItem
                     key={commit.id}
                     value={`${commit.hash} ${commit.message} ${commit.author}`}
@@ -80,7 +80,13 @@ export function SearchBar({
                     </div>
                   </CommandItem>
                 ))}
+                {commits.length > 50 && (
+                  <div className="px-2 py-3 text-[10px] text-center text-muted-foreground border-t border-border/50 italic">
+                    Showing first 50 results. Use more specific keywords to filter...
+                  </div>
+                )}
               </CommandGroup>
+
             </CommandList>
           </div>
         )}

@@ -65,6 +65,7 @@ export function GitVisualizer({
   apiConfiguration = null,
   onOpenApiManager,
 }: GitVisualizerProps) {
+  type ReloadSource = "initial" | "manual" | "git" | "workdir" | "load_more";
   const [commits, setCommits] = useState<CommitNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [isLayoutReady, setIsLayoutReady] = useState(false);
@@ -75,11 +76,14 @@ export function GitVisualizer({
   const [executingCommits, setExecutingCommits] = useState<Set<string>>(
     new Set(),
   );
+  const [commitLimit, setCommitLimit] = useState(100);
   const [executionTime, setExecutionTime] = useState<number>(0);
+  const lastReloadSourceRef = useRef<ReloadSource>("initial");
+  const anchorNodeIdRef = useRef<string | null>(null);
   const vscode = getVsCodeApi();
 
   const fetchCommits = useCallback(
-    (isManual = false) => {
+    (source: ReloadSource = "manual", limit = 100) => {
       if (!repoPath) return;
       setLoading(true);
       setIsLayoutReady(false);
@@ -87,7 +91,8 @@ export function GitVisualizer({
       const message: any = {
         command: "loadRepo",
         directory: repoPath,
-        isManual,
+        source,
+        limit,
       };
       if (branch) message.branch = branch;
       vscode.postMessage(message);
@@ -96,8 +101,19 @@ export function GitVisualizer({
   );
 
   useEffect(() => {
-    if (repoPath) fetchCommits(true);
+    if (repoPath) {
+      setCommitLimit(100);
+      fetchCommits("initial", 100);
+    }
   }, [repoPath, branch, fetchCommits]);
+
+  // Effect to handle commitLimit changes specifically for LOAD_MORE
+  useEffect(() => {
+    // Skip initial load which is handled above
+    if (commitLimit > 100 && repoPath) {
+      fetchCommits("load_more", commitLimit);
+    }
+  }, [commitLimit, repoPath, fetchCommits]);
 
   // Handle messages from the extension
   useEffect(() => {
@@ -107,34 +123,33 @@ export function GitVisualizer({
         case "displayCommits":
           {
             const incoming: CommitNode[] = message.commits || [];
+            if (incoming.length === 0) {
+              setCommits([]);
+              setLoading(false);
+              return;
+            }
 
-            // Identify merge commits and their ancestors
+            // Create a map for O(1) lookup
+            const commitMap = new Map<string, CommitNode>();
+            for (const c of incoming) commitMap.set(c.id, c);
+
+            // Identify merge commits and their ancestors using O(N) traversal
             const mergeCommits = new Set<string>();
+            const mergeAncestors = new Set<string>();
+
             for (const c of incoming) {
               if (c.parents && c.parents.length > 1) {
                 mergeCommits.add(c.id);
-              }
-            }
-
-            const mergeAncestors = new Set<string>();
-            const findAncestors = (commitId: string) => {
-              const commit = incoming.find((c) => c.id === commitId);
-              if (!commit || !commit.parents) return;
-              for (const parentId of commit.parents) {
-                if (!mergeAncestors.has(parentId)) {
-                  mergeAncestors.add(parentId);
-                  findAncestors(parentId);
-                }
-              }
-            };
-
-            for (const mergeId of mergeCommits) {
-              const mergeCommit = incoming.find((c) => c.id === mergeId);
-              if (mergeCommit && mergeCommit.parents) {
-                for (const parentId of mergeCommit.parents) {
-                  if (!mergeAncestors.has(parentId)) {
-                    mergeAncestors.add(parentId);
-                    findAncestors(parentId);
+                // Traverse parents to find all merge ancestors
+                const stack = [...c.parents];
+                while (stack.length > 0) {
+                  const pid = stack.pop()!;
+                  if (!mergeAncestors.has(pid)) {
+                    mergeAncestors.add(pid);
+                    const parent = commitMap.get(pid);
+                    if (parent?.parents) {
+                      stack.push(...parent.parents);
+                    }
                   }
                 }
               }
@@ -147,8 +162,30 @@ export function GitVisualizer({
               isRoot: !c.parents || c.parents.length === 0,
             }));
 
-            setCommits(processed);
+            // Add "Load More" node if the backend says more exist
+            if (message.hasMore) {
+              const oldestCommit = processed[processed.length - 1];
+              if (oldestCommit) {
+                // Add LOAD_MORE as a node
+                processed.push({
+                  id: "LOAD_MORE",
+                  label: "LOAD MORE...",
+                  hash: "LOAD_MORE",
+                  message: "Load more commits",
+                  author: "system",
+                  date: "",
+                  parents: [],
+                  kind: "load_more"
+                } as any);
+                // Make it a parent of the oldest commit in the current batch
+                oldestCommit.parents = [...(oldestCommit.parents || []), "LOAD_MORE"];
+              }
+            }
 
+
+
+            setCommits(processed);
+            lastReloadSourceRef.current = message.source || "manual";
             setLoading(false);
             setIsLayoutReady(false);
             setIsDiffOpen(false);
@@ -305,6 +342,20 @@ export function GitVisualizer({
         selector: 'node[kind = "working"]',
         style: {
           "background-color": themeColors.modified,
+        },
+      },
+      {
+        selector: 'node[kind = "load_more"]',
+        style: {
+          "background-color": themeColors.primary,
+          color: "#fff",
+          width: 80,
+          height: 24,
+          shape: "round-rectangle",
+          "text-valign": "center",
+          "text-halign": "center",
+          "font-size": 9,
+          "font-weight": "bold",
         },
       },
       {
@@ -472,7 +523,15 @@ export function GitVisualizer({
   useEffect(() => {
     if (!cyInstance) return;
     const handleNodeTap = (evt: any) => {
-      const commit = commits.find((c) => c.id === evt.target.id());
+      const tappedId = evt.target.id();
+      if (tappedId === "LOAD_MORE") {
+        const anchor = commits.find((c) => c.parents?.includes("LOAD_MORE"));
+        if (anchor) anchorNodeIdRef.current = anchor.id;
+        setCommitLimit((prev) => prev + 100);
+        return;
+      }
+
+      const commit = commits.find((c) => c.id === tappedId);
       console.log("GitVisualizer: node tapped", commit?.hash);
       if (commit) {
         setSelectedId(commit.id);
@@ -485,7 +544,7 @@ export function GitVisualizer({
       if (cyInstance && !cyInstance.destroyed())
         cyInstance.off("tap", "node", handleNodeTap);
     };
-  }, [commits, onCommitSelect, cyInstance, repoPath, vscode]);
+  }, [commits, onCommitSelect, cyInstance, repoPath, vscode, commitLimit]);
 
   useEffect(() => {
     return () => {
@@ -506,10 +565,18 @@ export function GitVisualizer({
     setIsLayoutReady(false);
 
     const onLayoutStop = () => {
-      // Fit to recent nodes after layout completes to avoid jitter
+      // If we are loading more, center on the anchor node instead of fitting everything
       try {
-        const recentNodes = cyInstance.nodes("[index < 10]");
-        cyInstance.fit(recentNodes.nonempty() ? recentNodes : undefined, 30);
+        if (lastReloadSourceRef.current === "load_more" && anchorNodeIdRef.current && cyInstance) {
+          const node = cyInstance.getElementById(anchorNodeIdRef.current);
+          if (node.nonempty()) {
+            cyInstance.center(node);
+          }
+          anchorNodeIdRef.current = null;
+        } else {
+          const recentNodes = cyInstance.nodes("[index < 10]");
+          cyInstance.fit(recentNodes.nonempty() ? recentNodes : undefined, 30);
+        }
       } catch {
         // Ignore fit errors
       }
@@ -593,7 +660,7 @@ export function GitVisualizer({
         )}
       >
         <CytoscapeComponent
-          key={`${repoPath}:${branch}:${commits.length}`}
+          key={`${repoPath}:${branch}`}
           elements={elements as any}
           cy={onCyInit}
           stylesheet={stylesheet as any}

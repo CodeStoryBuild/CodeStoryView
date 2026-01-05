@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { html as renderDiff } from "diff2html";
-import "diff2html/bundles/css/diff2html.min.css";
+import { parse as parseDiff } from "diff2html";
+import { DiffHighlighter } from "@/lib/diffHighlighter";
 import {
   Dialog,
   DialogContent,
@@ -76,39 +76,58 @@ export function DiffDialog({
     globalConfig: Record<string, any>;
   } | null>(apiConfiguration || null);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [visibleFiles, setVisibleFiles] = useState(10);
+
   // Ref to preserve selection state across working dir reloads
   const preservedSelectionRef = useRef<Set<string> | null>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   // Parse files from the raw diff
   const parsedFiles = useMemo(() => {
     if (!rawDiff) return [];
-    const files: string[] = [];
-    const lines = rawDiff.split("\n");
-    for (const line of lines) {
-      // Match lines like "diff --git a/path/to/file b/path/to/file"
-      const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
-      if (match) {
-        files.push(match[2]); // Use the "b" path (after changes)
-      }
+    try {
+      const files = parseDiff(rawDiff);
+      return files.map(f => f.newName || f.oldName || "unknown").filter(f => f !== "unknown");
+    } catch {
+      return [];
     }
-    return [...new Set(files)]; // Deduplicate
   }, [rawDiff]);
+
+  // Reset visible files when rawDiff changes
+  useEffect(() => {
+    setVisibleFiles(10);
+  }, [rawDiff]);
+
+  // Infinite scroll for files
+  useEffect(() => {
+    if (!open || !rawDiff) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleFiles((prev) => prev + 10);
+        }
+      },
+      { threshold: 0.1 },
+    );
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [open, rawDiff]);
 
   // Initialize selected files when parsedFiles changes (for working dir commits)
   useEffect(() => {
     if (commit?.isWorkingDir && parsedFiles.length > 0) {
-      // If we have a preserved selection from a reload, restore it for files that still exist
       if (preservedSelectionRef.current) {
         const preserved = preservedSelectionRef.current;
         const restoredSelection = new Set(
           parsedFiles.filter((file) => preserved.has(file)),
         );
-        // If preserved selection had files but none remain, select all new ones
-        // Otherwise keep the intersection (could be empty if user had deselected all)
         setSelectedFiles(restoredSelection);
-        preservedSelectionRef.current = null; // Clear after restoration
-      } else {
-        // First load: select all files by default
+        preservedSelectionRef.current = null;
+      } else if (selectedFiles.size === 0) {
         setSelectedFiles(new Set(parsedFiles));
       }
     }
@@ -146,15 +165,6 @@ export function DiffDialog({
   const noFilesSelected = selectedFiles.size === 0;
   const someFilesSelected =
     selectedFiles.size > 0 && selectedFiles.size < parsedFiles.length;
-
-  // Handle API configuration changes
-  const handleApiConfigurationChange = (config: {
-    provider: string;
-    model: string;
-    globalConfig: Record<string, any>;
-  }) => {
-    setLocalApiConfiguration(config);
-  };
 
   // Update local configuration when prop changes
   useEffect(() => {
@@ -196,9 +206,7 @@ export function DiffDialog({
         open &&
         commit?.isWorkingDir
       ) {
-        // Preserve current selection before refetching
         preservedSelectionRef.current = new Set(selectedFiles);
-        // Refetch the working directory diff
         setLoading(true);
         setError(null);
         vscode.postMessage({
@@ -213,41 +221,82 @@ export function DiffDialog({
     return () => window.removeEventListener("message", handleMessage);
   }, [commit, open, repoPath, vscode, selectedFiles]);
 
-  // Render diff HTML when view or rawDiff changes
-  const diffHtml = useMemo(() => {
-    if (!rawDiff) return "";
+  // Render custom highlighted diff
+  const renderedDiffItems = useMemo(() => {
+    if (!open || !rawDiff) return null;
     try {
-      return renderDiff(rawDiff, {
-        drawFileList: true,
-        matching: "lines",
-        outputFormat: view,
-        colorScheme: "dark" as any,
+      const allFiles = parseDiff(rawDiff);
+      const displayedFiles = allFiles.slice(0, visibleFiles);
+
+      return displayedFiles.map((file, fileIdx) => {
+        const filePath = file.newName || file.oldName || "unknown";
+        const isDeleted = file.newName === "/dev/null";
+        const isNew = file.oldName === "/dev/null";
+        const fileTypeLabel = isDeleted ? "deleted" : isNew ? "added" : "modified";
+
+        return (
+          <div key={`${filePath}-${fileIdx}`} className="mb-6 border border-border rounded-md overflow-hidden bg-background shadow-sm">
+            <div className="bg-muted/50 px-3 py-1.5 border-b border-border flex items-center justify-between">
+              <span className="font-mono text-[11px] truncate opacity-80">{filePath}</span>
+              <span className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${isNew ? "bg-emerald-500/20 text-emerald-400" :
+                  isDeleted ? "bg-rose-500/20 text-rose-400" : "bg-blue-500/10 text-blue-400"
+                }`}>{fileTypeLabel}</span>
+            </div>
+            <div className="divide-y divide-border/30">
+              {file.blocks.map((block, blockIdx) => (
+                <div key={blockIdx} className="bg-muted/5">
+                  <div className="px-3 py-1 text-[10px] text-muted-foreground font-mono bg-muted/10 italic border-y border-border/20">
+                    {block.header}
+                  </div>
+                  {block.lines.map((line, lineIdx) => {
+                    const highlitContent = DiffHighlighter.highlight(line.content);
+                    const typeClass = line.type === "insert" ? "bg-emerald-500/10 text-emerald-300/90" :
+                      line.type === "delete" ? "bg-rose-500/10 text-rose-300/90" : "hover:bg-muted/10";
+
+                    return (
+                      <div key={lineIdx} className={`flex font-mono text-[11px] leading-relaxed group border-b last:border-b-0 border-border/5 ${typeClass}`}>
+                        <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
+                          {line.oldNumber || ""}
+                        </div>
+                        <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
+                          {line.newNumber || ""}
+                        </div>
+                        <div
+                          className="px-4 py-0.5 whitespace-pre break-all overflow-x-auto flex-1 font-syntax transition-opacity"
+                          dangerouslySetInnerHTML={{ __html: highlitContent }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
       });
     } catch (err) {
-      console.error("Failed to render diff", err);
-      return "";
+      console.error("Failed to parse diff", err);
+      return <div className="p-4 text-destructive">Error rendering diff</div>;
     }
-  }, [rawDiff, view]);
+  }, [rawDiff, open, visibleFiles]);
 
-  // Memoize the dangerouslySetInnerHTML object to prevent React from
-  // re-parsing/re-rendering the large diff HTML on unrelated state changes
-  const diffHtmlProps = useMemo(() => ({ __html: diffHtml }), [diffHtml]);
-
-  const title = useMemo(() => {
-    if (!commit) return "Commit";
-    return `${commit.message || "Commit"}`;
-  }, [commit]);
+  const hasMoreFiles = useMemo(() => {
+    if (!rawDiff) return false;
+    try {
+      const files = parseDiff(rawDiff);
+      return files.length > visibleFiles;
+    } catch {
+      return false;
+    }
+  }, [rawDiff, visibleFiles]);
 
   const handleVibeCommand = (command: string, intent?: string) => {
     const isCommit = command === "commit";
 
-    // For commit commands with partial file selection, ensure at least one file is selected
     if (isCommit && parsedFiles.length > 0 && noFilesSelected) {
-      // Don't proceed - UI will show the error
       return;
     }
 
-    // If relevance filtering is enabled, we MUST have an intent for commit commands
     if (
       isCommit &&
       !intent &&
@@ -257,11 +306,9 @@ export function DiffDialog({
       return;
     }
 
-    // Close the dialog immediately, regardless of whether we run or not
     onOpenChange(false);
     setShowIntentDialog(false);
 
-    // Require provider and model separately. API key is optional.
     if (
       !localApiConfiguration ||
       !localApiConfiguration.model ||
@@ -275,7 +322,6 @@ export function DiffDialog({
       onExecute(commit.hash);
     }
 
-    // Build a small, extensible "globalArgs" object which the extension will map to CLI args
     const globalArgs: Record<string, any> = {
       model: `${localApiConfiguration.provider}:${localApiConfiguration.model}`,
       ...localApiConfiguration.globalConfig,
@@ -288,9 +334,7 @@ export function DiffDialog({
       globalArgs,
     };
 
-    // For commit commands, include guidance message, intent, and pathspec
     if (isCommit) {
-      // Build pathspec if not all files are selected
       const pathspec = someFilesSelected ? Array.from(selectedFiles) : null;
       payload.commandArgs = {
         message: guidanceMessage || null,
@@ -298,7 +342,6 @@ export function DiffDialog({
         pathspec: pathspec,
       };
     } else {
-      // For non-commit (fix) commands include a command-specific args object with message support
       payload.commandArgs = {
         commit_hash: commit?.hash,
         message: guidanceMessage || null,
@@ -308,9 +351,17 @@ export function DiffDialog({
     vscode.postMessage(payload);
   };
 
+  const handleOpenChangeInternal = (newOpen: boolean) => {
+    if (!newOpen) {
+      setRawDiff("");
+      setLoading(false);
+    }
+    onOpenChange(newOpen);
+  };
+
   return (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={handleOpenChangeInternal}>
         <DialogContent
           fullScreen
           className="flex flex-col p-0 gap-0 overflow-hidden bg-background border-border shadow-2xl"
@@ -400,7 +451,6 @@ export function DiffDialog({
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 mt-2 sm:mt-3">
               {commit?.isWorkingDir ? (
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full">
-                  {/* Left side: Input + Commit button */}
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="flex items-center gap-1">
                       <Input
@@ -409,90 +459,94 @@ export function DiffDialog({
                         onChange={(e) => setGuidanceMessage(e.target.value)}
                         className="h-7 text-[11px] w-32 sm:w-48 bg-background/50 border-border/50 focus:border-primary/50"
                       />
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom" className="max-w-[250px]">
-                          Optionally provide a guidance message to the LLM so it
-                          can better understand the "why" behind your changes
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
-                            onClick={() => handleVibeCommand("commit")}
-                            disabled={
-                              isAnyExecuting ||
-                              (parsedFiles.length > 0 && noFilesSelected)
-                            }
-                          >
-                            <Save className="h-3 w-3" />
-                            Commit
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      {isAnyExecuting && !isCurrentExecuting && (
-                        <TooltipContent side="bottom">
-                          Another operation is currently executing
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
-                  </div>
-
-                  {/* Right side: File selection bar (horizontally scrollable) */}
-                  {parsedFiles.length > 0 && (
-                    <div className="flex items-center gap-2 flex-1 min-w-0 max-w-full sm:max-w-none justify-start sm:justify-end overflow-hidden">
-                      {/* Select All toggle */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            onClick={() => {
-                              if (allFilesSelected) {
-                                deselectAllFiles();
-                              } else {
-                                selectAllFiles();
-                              }
-                            }}
-                            className="flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium hover:bg-accent transition-colors shrink-0"
-                          >
-                            {allFilesSelected ? (
-                              <CheckSquare className="h-3.5 w-3.5 text-primary" />
-                            ) : someFilesSelected ? (
-                              <CheckSquare className="h-3.5 w-3.5 text-primary opacity-50" />
-                            ) : (
-                              <Square className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          {allFilesSelected
-                            ? "Deselect all files"
-                            : "Select all files"}{" "}
-                          ({selectedFiles.size}/{parsedFiles.length})
-                        </TooltipContent>
-                      </Tooltip>
-
-                      {/* No files selected warning */}
-                      {noFilesSelected && (
+                      <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <div className="flex items-center shrink-0 text-destructive">
-                              <AlertCircle className="h-3.5 w-3.5" />
-                            </div>
+                            <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                           </TooltipTrigger>
-                          <TooltipContent side="bottom">
-                            You must select at least one file to commit
+                          <TooltipContent side="bottom" className="max-w-[250px]">
+                            Optionally provide a guidance message to the LLM so it
+                            can better understand the "why" behind your changes
                           </TooltipContent>
                         </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
+                              onClick={() => handleVibeCommand("commit")}
+                              disabled={
+                                isAnyExecuting ||
+                                (parsedFiles.length > 0 && noFilesSelected)
+                              }
+                            >
+                              <Save className="h-3 w-3" />
+                              Commit
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        {isAnyExecuting && !isCurrentExecuting && (
+                          <TooltipContent side="bottom">
+                            Another operation is currently executing
+                          </TooltipContent>
+                        )}
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+
+                  {parsedFiles.length > 0 && (
+                    <div className="flex items-center gap-2 flex-1 min-w-0 max-w-full sm:max-w-none justify-start sm:justify-end overflow-hidden">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              onClick={() => {
+                                if (allFilesSelected) {
+                                  deselectAllFiles();
+                                } else {
+                                  selectAllFiles();
+                                }
+                              }}
+                              className="flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium hover:bg-accent transition-colors shrink-0"
+                            >
+                              {allFilesSelected ? (
+                                <CheckSquare className="h-3.5 w-3.5 text-primary" />
+                              ) : someFilesSelected ? (
+                                <CheckSquare className="h-3.5 w-3.5 text-primary opacity-50" />
+                              ) : (
+                                <Square className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">
+                            {allFilesSelected
+                              ? "Deselect all files"
+                              : "Select all files"}{" "}
+                            ({selectedFiles.size}/{parsedFiles.length})
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+
+                      {noFilesSelected && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center shrink-0 text-destructive">
+                                <AlertCircle className="h-3.5 w-3.5" />
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom">
+                              You must select at least one file to commit
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       )}
 
-                      {/* Horizontal scrollable file list */}
                       <div
                         className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar-horizontal min-w-0 flex-1 py-0.5"
                         style={{ maxWidth: "calc(100vw - 180px)" }}
@@ -502,14 +556,13 @@ export function DiffDialog({
                             key={file}
                             onClick={() => toggleFileSelection(file)}
                             className={`
-                              flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono whitespace-nowrap
-                              border transition-all cursor-pointer shrink-0
-                              ${
-                                selectedFiles.has(file)
-                                  ? "bg-primary/10 border-primary/30 text-primary"
-                                  : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
+                                flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono whitespace-nowrap
+                                border transition-all cursor-pointer shrink-0
+                                ${selectedFiles.has(file)
+                                ? "bg-primary/10 border-primary/30 text-primary"
+                                : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
                               }
-                            `}
+                              `}
                           >
                             {selectedFiles.has(file) ? (
                               <CheckSquare className="h-2.5 w-2.5" />
@@ -534,41 +587,44 @@ export function DiffDialog({
                       onChange={(e) => setGuidanceMessage(e.target.value)}
                       className="h-7 text-[11px] w-32 sm:w-48 bg-background/50 border-border/50 focus:border-primary/50"
                     />
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom" className="max-w-[250px]">
+                          Optionally provide a guidance message to the LLM so it
+                          can better understand the "why" behind your changes
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <TooltipProvider>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                        <span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
+                            onClick={() => handleVibeCommand("expand")}
+                            disabled={isAnyExecuting}
+                          >
+                            <RotateCcw
+                              className={`h-3 w-3 ${isCurrentExecuting ? "animate-spin" : ""
+                                }`}
+                            />
+                            Fix
+                          </Button>
+                        </span>
                       </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-[250px]">
-                        Optionally provide a guidance message to the LLM so it
-                        can better understand the "why" behind your changes
-                      </TooltipContent>
+                      {isAnyExecuting && !isCurrentExecuting && (
+                        <TooltipContent side="bottom">
+                          Another operation is currently executing
+                        </TooltipContent>
+                      )}
                     </Tooltip>
-                  </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
-                          onClick={() => handleVibeCommand("expand")}
-                          disabled={isAnyExecuting}
-                        >
-                          <RotateCcw
-                            className={`h-3 w-3 ${
-                              isCurrentExecuting ? "animate-spin" : ""
-                            }`}
-                          />
-                          Fix
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    {isAnyExecuting && !isCurrentExecuting && (
-                      <TooltipContent side="bottom">
-                        Another operation is currently executing
-                      </TooltipContent>
-                    )}
-                  </Tooltip>
+                  </TooltipProvider>
                 </div>
               ) : null}
             </div>
@@ -585,11 +641,26 @@ export function DiffDialog({
                 {error}
               </div>
             ) : (
-              <div
-                key={view}
-                className="diff-container text-xs"
-                dangerouslySetInnerHTML={diffHtmlProps}
-              />
+              <div className="space-y-4">
+                {renderedDiffItems}
+                {hasMoreFiles && (
+                  <div
+                    ref={loadMoreRef}
+                    className="py-12 flex flex-col items-center justify-center gap-3 opacity-60 hover:opacity-100 transition-opacity border-t border-border/30 mt-8"
+                  >
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                    <span className="text-[10px] uppercase tracking-widest font-bold">Loading more files...</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setVisibleFiles(prev => prev + 10)}
+                      className="h-7 text-[10px] mt-2"
+                    >
+                      Show More
+                    </Button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </DialogContent>
@@ -616,54 +687,24 @@ export function DiffDialog({
                   handleVibeCommand("commit", intentMessage);
                 }
               }}
-              autoFocus
             />
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setShowIntentDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setShowIntentDialog(false)}
+            >
               Cancel
             </Button>
             <Button
-              disabled={!intentMessage.trim()}
               onClick={() => handleVibeCommand("commit", intentMessage)}
+              disabled={!intentMessage.trim()}
             >
-              Run Commit
+              Run Vibe
             </Button>
           </div>
         </DialogContent>
       </Dialog>
-
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-        .diff-container .d2h-code-linenumber,
-        .diff-container .d2h-code-side-linenumber {
-          position: sticky !important;
-          left: 0 !important;
-          z-index: 30 !important;
-          background-color: var(--background) !important;
-          border-color: var(--border) !important;
-          opacity: 0.8;
-        }
-
-        .diff-container .d2h-code-line,
-        .diff-container .d2h-code-side-line {
-          position: relative !important;
-          z-index: 1 !important;
-        }
-
-        .diff-container .d2h-file-header {
-          background-color: var(--muted) !important;
-          border-color: var(--border) !important;
-          padding: 4px 8px !important;
-        }
-
-        .diff-container .d2h-file-name {
-          font-size: 11px !important;
-        }
-      `,
-        }}
-      />
     </>
   );
 }

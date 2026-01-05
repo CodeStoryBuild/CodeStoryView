@@ -147,6 +147,9 @@ function App() {
           setLoadError(null);
           setIsLoading(false);
           break;
+        case "loading":
+          setIsLoading(true);
+          break;
         case "loadError":
           setLoadError(message.message || "Failed to load repository");
           setIsLoaded(false);
@@ -208,20 +211,15 @@ function App() {
             });
 
             // If we auto-updated because the branch changed and strategy is "update",
-            // we need to trigger a reload to get the commits for the new branch.
+            // we now rely on GitVisualizer's effect to trigger the reload when the prop changes.
             if (
               branchUpdateStrategy === "update" &&
               newRepoBranch !== oldBranch &&
               oldBranch !== ""
             ) {
               setIsLoading(true);
-              vscode.postMessage({
-                command: "loadRepo",
-                directory: repoPath,
-                branch: newRepoBranch,
-                isManual: false,
-              });
             }
+
           }
           break;
         case "displayDiff":
@@ -272,13 +270,9 @@ function App() {
         branch: b,
         lastPromptedBranch: b,
       });
-      vscode.postMessage({
-        command: "loadRepo",
-        directory: repoPath,
-        branch: b,
-      });
+      // Removed redundant vscode.postMessage as GitVisualizer's effect handles branch changes
     },
-    [repoPath, vscode],
+    [vscode], // repoPath removed from deps as it's not used now
   );
 
   const handleReload = useCallback(() => {
