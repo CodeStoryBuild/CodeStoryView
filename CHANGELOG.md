@@ -1,3 +1,13 @@
+## V0.1.7
+
+- Add: Incremental commit loading for large repositories
+- Add: Incremental diff loading for large commits
+- Feat: Custom diff viewer instead of diff2html for better performance
+- Feat: Simple heuristical syntax highlighting for diffs
+- Changed: Bump Codestory Cli version to 0.1.7
+- Fix: Repository reloads were not being smoothly animated when triggered due to a file watcher change
+- Fix: Minor ui polish
+
 ## V0.1.6
 
 - Changed: Remove relevance_filtering_level option as it has been changed to two separate options
