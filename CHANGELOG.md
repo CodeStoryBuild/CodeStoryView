@@ -1,3 +1,10 @@
+## V0.1.9
+
+- Changed: Bump Codestory Cli version to 0.1.10
+- Fix: Diff lines in diff viewer have added padding on the left for better readability
+- Fix: Search bar footer stays at the bottom of the window now
+- Fix: Removed unified/split diff toggle, for now we only support unified view.
+
 ## V0.1.8
 
 - Feat: Syntax highlighting for diff viewer
