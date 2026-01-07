@@ -45,3 +45,8 @@ jobs:
           VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
         # continue-on-error: true # Optional: Uncomment if you want the GitHub Release to happen even if Marketplace fails
         run: npx vsce publish --pat $VSCE_TOKEN --packagePath *.vsix
+
+      - name: Publish to Open VSX Registry
+        env:
+          OVSX_TOKEN: ${{ secrets.OVSX_TOKEN }}
+        run: npx ovsx publish *.vsix --pat $OVSX_TOKEN
