@@ -24,16 +24,27 @@ export class DiffHighlighter {
    * capture groups in <span> tags assigned to specific category classes.
    */
   public static highlight(content: string): string {
-    let lastIndex = 0;
-    let html = "";
+    if (!content) return "";
 
+    const indicator = content[0];
+    const isDiffIndicator = indicator === "+" || indicator === "-";
+    const rest = content.slice(1);
+
+    let html = "";
+    if (isDiffIndicator) {
+      html = `<span class="di">${indicator}</span><span class="di-s"> </span>`;
+    } else {
+      html = `<span class="di">&nbsp;</span><span class="di-s"> </span>`;
+    }
+
+    let lastIndex = 0;
     // Reset regex index
     UNIVERSAL_REGEX.lastIndex = 0;
-    const matches = Array.from(content.matchAll(UNIVERSAL_REGEX));
+    const matches = Array.from(rest.matchAll(UNIVERSAL_REGEX));
 
     for (const match of matches) {
       // Add text before the match
-      html += this.escape(content.slice(lastIndex, match.index));
+      html += this.escape(rest.slice(lastIndex, match.index));
 
       // Identify which named group matched
       const groups = match.groups as { [key: string]: string | undefined };
@@ -55,7 +66,7 @@ export class DiffHighlighter {
     }
 
     // Add remaining text
-    html += this.escape(content.slice(lastIndex));
+    html += this.escape(rest.slice(lastIndex));
     return html;
   }
 }
