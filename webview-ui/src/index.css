@@ -175,39 +175,78 @@
 .c {
   color: #6a737d;
   font-style: italic;
-} /* comment */
+}
+
+/* comment */
 .s {
   color: #032f62;
-} /* string */
+}
+
+/* string */
 .k {
   color: #d73a49;
   font-weight: 500;
-} /* keyword */
+}
+
+/* keyword */
 .n {
   color: #005cc5;
-} /* number */
+}
+
+/* number */
 .o {
   color: #d73a49;
-} /* operator */
+}
+
+/* operator */
 .f {
   color: #6f42c1;
-} /* function call */
+}
+
+/* function call */
+
+/* Diff Indicators */
+.di {
+  color: #ffffff;
+  opacity: 0.5;
+  font-weight: bold;
+  display: inline-block;
+  width: 1.5ch;
+  text-align: center;
+  user-select: none;
+}
+
+.di-s {
+  display: inline-block;
+  width: 1ch;
+  user-select: none;
+}
+
+.dark .di {
+  color: #ffffff;
+  opacity: 0.4;
+}
 
 .dark .c {
   color: #8b949e;
 }
+
 .dark .s {
   color: #a5d6ff;
 }
+
 .dark .k {
   color: #ff7b72;
 }
+
 .dark .n {
   color: #79c0ff;
 }
+
 .dark .o {
   color: #ff7b72;
 }
+
 .dark .f {
   color: #d2a8ff;
 }

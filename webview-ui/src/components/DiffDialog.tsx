@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
 import { Input } from "@/components/ui/input";
 import {
   Tooltip,
@@ -70,9 +69,6 @@ export function DiffDialog({
   const [error, setError] = useState<string | null>(null);
   const vscode = getVsCodeApi();
 
-  const [view, setView] = useState<"line-by-line" | "side-by-side">(
-    "line-by-line",
-  );
   const [rawDiff, setRawDiff] = useState<string>("");
   const [guidanceMessage, setGuidanceMessage] = useState("");
   const [showIntentDialog, setShowIntentDialog] = useState(false);
@@ -461,27 +457,6 @@ export function DiffDialog({
                     </span>
                   </span>
                 </DialogDescription>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <ButtonGroup>
-                  <Button
-                    variant={view === "line-by-line" ? "secondary" : "ghost"}
-                    size="sm"
-                    onClick={() => setView("line-by-line")}
-                    className="text-[9px] sm:text-[10px] h-6 sm:h-7 px-1.5 sm:px-2.5"
-                  >
-                    Unified
-                  </Button>
-                  <Button
-                    variant={view === "side-by-side" ? "secondary" : "ghost"}
-                    size="sm"
-                    onClick={() => setView("side-by-side")}
-                    className="text-[9px] sm:text-[10px] h-6 sm:h-7 px-1.5 sm:px-2.5"
-                  >
-                    Split
-                  </Button>
-                </ButtonGroup>
               </div>
             </div>
 

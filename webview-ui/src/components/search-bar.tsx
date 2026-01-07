@@ -48,8 +48,8 @@ export function SearchBar({
           }}
         />
         {open && (
-          <div className="absolute top-[calc(100%+4px)] left-0 w-full z-50">
-            <CommandList className="rounded-md border border-border bg-popover/95 backdrop-blur-md text-popover-foreground shadow-md outline-none animate-in fade-in-0 zoom-in-95 max-h-[300px] overflow-y-auto">
+          <div className="absolute top-[calc(100%+4px)] left-0 w-full z-50 rounded-md border border-border bg-popover/95 backdrop-blur-md text-popover-foreground shadow-md outline-none animate-in fade-in-0 zoom-in-95 overflow-hidden">
+            <CommandList className="max-h-[300px] overflow-y-auto">
               <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">
                 No commits found.
               </CommandEmpty>
@@ -80,14 +80,14 @@ export function SearchBar({
                     </div>
                   </CommandItem>
                 ))}
-                {commits.length > 50 && (
-                  <div className="px-2 py-3 text-[10px] text-center text-muted-foreground border-t border-border/50 italic">
-                    Showing first 50 results. Use more specific keywords to
-                    filter...
-                  </div>
-                )}
               </CommandGroup>
             </CommandList>
+            {commits.length > 50 && (
+              <div className="px-2 py-3 text-[10px] text-center text-muted-foreground border-t border-border/50 italic bg-muted/20">
+                Showing first 50 results. Use more specific keywords to
+                filter...
+              </div>
+            )}
           </div>
         )}
       </Command>
