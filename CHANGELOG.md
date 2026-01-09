@@ -1,3 +1,8 @@
+## V0.1.10
+
+- Fix: Reload only when repository content changes
+- Fix: Fix bug where extension would get stuck loading because of git lock errors
+
 ## V0.1.9
 
 - Changed: Bump Codestory Cli version to 0.1.10

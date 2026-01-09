@@ -1,5 +1,40 @@
 import * as cp from "child_process";
 import * as fs from "fs";
+import * as path from "path";
+
+export async function isGitLocked(repoPath: string): Promise<boolean> {
+  try {
+    const gitDir = path.join(repoPath, ".git");
+    if (!fs.existsSync(gitDir)) {
+      return false;
+    }
+
+    const lockFiles = [
+      "index.lock",
+      "HEAD.lock",
+      "FETCH_HEAD.lock",
+      "ORIG_HEAD.lock",
+      "config.lock",
+      "packed-refs.lock",
+      "MERGE_HEAD.lock",
+      "CHERRY_PICK_HEAD.lock",
+      "BISECT_HEAD.lock",
+      "REBASE_HEAD.lock",
+    ];
+
+    // Check main lock files
+    for (const file of lockFiles) {
+      if (fs.existsSync(path.join(gitDir, file))) {
+        console.log(`[GitLogic] Git lock detected: ${file}`);
+        return true;
+      }
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 export interface Commit {
   id: string;
