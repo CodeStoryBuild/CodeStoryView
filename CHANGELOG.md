@@ -1,7 +1,12 @@
 ## V0.1.11
 
 - Changed: Use vscode terminal shellIntegration to execute commands much more robustly
-- Changed: Bump Codestory Cli version to 0.1.11
+- Changed: Bump Codestory Cli version to 0.1.12
+- Fix: Scroll bar for large commit messages
+- Fix: Truncate extremely long diff hunks
+- Fix: Improve caching of data to reduce redundant calls
+- Fix: Fix renames being shown as modifications
+- Fix: Use a temp git index to always use get a full working diff including untracked files
 
 ## V0.1.10
 
