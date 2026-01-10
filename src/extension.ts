@@ -97,11 +97,11 @@ export function activate(context: vscode.ExtensionContext) {
   let nonRepoDebounceTimer: NodeJS.Timeout | undefined;
   let lastState:
     | {
-        branches: string[];
-        currentBranch: string | undefined;
-        isDetached: boolean;
-        commits: any[];
-      }
+      branches: string[];
+      currentBranch: string | undefined;
+      isDetached: boolean;
+      commits: any[];
+    }
     | undefined;
 
   async function handleLoadRepo(
@@ -129,12 +129,14 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (source === "git" || source === "workdir") {
         let locked = await isGitLocked(repoPath);
-        if (locked) {
-          // Retry once after 500ms
-          await new Promise((resolve) => setTimeout(resolve, 500));
+        let retries = 0;
+        while (locked && retries < 3) {
+          const delay = Math.pow(2, retries) * 200;
+          await new Promise((resolve) => setTimeout(resolve, delay));
           locked = await isGitLocked(repoPath);
-          if (locked) return;
+          retries++;
         }
+        if (locked) return;
       }
 
       const pathChanged = watchedRepoPath !== repoPath;
@@ -168,7 +170,7 @@ export function activate(context: vscode.ExtensionContext) {
         currentBranch = branches[0];
       }
 
-      const { commits, hasMore } = await fetchCommits(
+      const { commits, hasMore, status } = await fetchCommits(
         repoPath,
         branch || "HEAD",
         limit,
@@ -180,6 +182,7 @@ export function activate(context: vscode.ExtensionContext) {
         isDetached,
         commits,
         hasMore,
+        status,
       };
 
       const commitsChanged = (a: any[], b: any[]) => {
@@ -187,16 +190,27 @@ export function activate(context: vscode.ExtensionContext) {
         const hasWorkB = b[0]?.isWorkingDir;
         if (hasWorkA !== hasWorkB) return true;
 
+        // If both have working dir, check if the status changed
+        if (hasWorkA && hasWorkB) {
+          if (a[0].status !== b[0].status) return true;
+        }
+
         const headA = hasWorkA ? a[1]?.id : a[0]?.id;
         const headB = hasWorkB ? b[1]?.id : b[0]?.id;
         return headA !== headB;
       };
 
+      const branchesChanged = (a: string[], b: string[]) => {
+        if (a.length !== b.length) return true;
+        for (let i = 0; i < a.length; i++) {
+          if (a[i] !== b[i]) return true;
+        }
+        return false;
+      };
+
       const stateChanged =
         !lastState ||
-        lastState.branches.length !== newState.branches.length ||
-        JSON.stringify(lastState.branches) !==
-          JSON.stringify(newState.branches) ||
+        branchesChanged(lastState.branches, newState.branches) ||
         lastState.currentBranch !== newState.currentBranch ||
         lastState.isDetached !== newState.isDetached ||
         commitsChanged(lastState.commits, newState.commits);
@@ -258,10 +272,17 @@ export function activate(context: vscode.ExtensionContext) {
       pendingWorkdirChange = false;
       pendingActualWorkdirChange = false;
 
-      const locked = await isGitLocked(repoPath);
+      let locked = await isGitLocked(repoPath);
+      let retries = 0;
+      while (locked && retries < 3) {
+        const delay = Math.pow(2, retries) * 200;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        locked = await isGitLocked(repoPath);
+        retries++;
+      }
       if (locked) {
         if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => handleFileChange(), 500);
+        debounceTimer = setTimeout(() => handleFileChange(), 1000);
         return;
       }
 
@@ -315,6 +336,8 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Initial load of .gitignore
     let ignoredPatterns: string[] = [];
+    let ignoreRegex: RegExp | undefined;
+
     const loadGitignore = () => {
       try {
         const gitignorePath = path.join(repoPath, ".gitignore");
@@ -324,6 +347,29 @@ export function activate(context: vscode.ExtensionContext) {
             .split("\n")
             .map((line) => line.trim())
             .filter((line) => line && !line.startsWith("#"));
+
+          if (ignoredPatterns.length > 0) {
+            // Convert patterns to regex parts
+            const parts = ignoredPatterns.map((p) => {
+              // Escape regex special chars except * and ?
+              let escaped = p.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+              // Convert glob * and ** to regex
+              escaped = escaped
+                .replace(/\*\*/g, "(.+)")
+                .replace(/\*/g, "([^/\\\\]+)")
+                .replace(/\?/g, "(.)");
+
+              // If it ends with /, it matches the dir and everything inside
+              if (escaped.endsWith("/")) {
+                return `^${escaped.slice(0, -1)}($|[\\\\/].*)`;
+              }
+              // Otherwise matches the file/dir exactly or as a trailing part
+              return `(^|[\\\\/])${escaped}($|[\\\\/].*)`;
+            });
+            ignoreRegex = new RegExp(parts.join("|"), "i");
+          } else {
+            ignoreRegex = undefined;
+          }
         }
       } catch (e) {
         console.error("Failed to read .gitignore", e);
@@ -332,9 +378,9 @@ export function activate(context: vscode.ExtensionContext) {
     loadGitignore();
 
     const isIgnored = (relPath: string) => {
+      // Primary hardcoded ignores
       if (relPath.startsWith(".git" + path.sep) || relPath === ".git")
         return true;
-      // Simple heuristic for common heavy folders if no .gitignore or in addition to it
       if (
         relPath.startsWith("node_modules" + path.sep) ||
         relPath === "node_modules"
@@ -345,22 +391,11 @@ export function activate(context: vscode.ExtensionContext) {
       if (relPath.startsWith("out" + path.sep) || relPath === "out")
         return true;
 
-      // Check against .gitignore patterns (basic glob-ish support)
-      for (const pattern of ignoredPatterns) {
-        if (pattern.endsWith("/")) {
-          const dirPattern = pattern.slice(0, -1);
-          if (
-            relPath === dirPattern ||
-            relPath.startsWith(dirPattern + path.sep)
-          )
-            return true;
-        } else if (
-          relPath === pattern ||
-          relPath.endsWith(path.sep + pattern)
-        ) {
-          return true;
-        }
+      // Use compiled regex if available
+      if (ignoreRegex && ignoreRegex.test(relPath)) {
+        return true;
       }
+
       return false;
     };
 
@@ -564,7 +599,7 @@ export function activate(context: vscode.ExtensionContext) {
                 if (configStr) {
                   try {
                     apiKey = JSON.parse(configStr).api_key;
-                  } catch (e) {}
+                  } catch (e) { }
                 }
                 await runCstInTerminal(
                   "Codestory Test",
@@ -612,7 +647,7 @@ export function activate(context: vscode.ExtensionContext) {
                   diff,
                   commitHash: message.commitHash,
                 });
-              } catch (error) {}
+              } catch (error) { }
               return;
             case "getGlobalConfig":
               const configStr = await context.secrets.get(
@@ -622,7 +657,7 @@ export function activate(context: vscode.ExtensionContext) {
               if (configStr) {
                 try {
                   config = JSON.parse(configStr);
-                } catch (e) {}
+                } catch (e) { }
               }
               const branchUpdateStrategy = vscode.workspace
                 .getConfiguration("codestoryView")
