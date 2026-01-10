@@ -300,14 +300,15 @@ export function DiffDialog({
               {filePath}
             </span>
             <span
-              className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${isNew
-                ? "bg-emerald-500/20 text-emerald-400"
-                : isDeleted
-                  ? "bg-rose-500/20 text-rose-400"
-                  : isRename
-                    ? "bg-amber-500/20 text-amber-400"
-                    : "bg-blue-500/10 text-blue-400"
-                }`}
+              className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${
+                isNew
+                  ? "bg-emerald-500/20 text-emerald-400"
+                  : isDeleted
+                    ? "bg-rose-500/20 text-rose-400"
+                    : isRename
+                      ? "bg-amber-500/20 text-amber-400"
+                      : "bg-blue-500/10 text-blue-400"
+              }`}
             >
               {fileTypeLabel}
             </span>
@@ -668,10 +669,11 @@ export function DiffDialog({
                             className={`
                                 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono whitespace-nowrap
                                 border transition-all cursor-pointer shrink-0
-                                ${selectedFiles.has(file)
-                                ? "bg-primary/10 border-primary/30 text-primary"
-                                : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
-                              }
+                                ${
+                                  selectedFiles.has(file)
+                                    ? "bg-primary/10 border-primary/30 text-primary"
+                                    : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
+                                }
                               `}
                           >
                             {selectedFiles.has(file) ? (
@@ -729,8 +731,9 @@ export function DiffDialog({
                             }
                           >
                             <RotateCcw
-                              className={`h-3 w-3 ${isCurrentExecuting ? "animate-spin" : ""
-                                }`}
+                              className={`h-3 w-3 ${
+                                isCurrentExecuting ? "animate-spin" : ""
+                              }`}
                             />
                             Fix
                           </Button>

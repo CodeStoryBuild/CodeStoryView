@@ -157,8 +157,9 @@ export async function fetchCommits(
     const sectionsToProcess = hasMore ? sections.slice(0, limit) : sections;
 
     const commits: Commit[] = sectionsToProcess.map((section) => {
-      const [hash, shortHash, message, author, date, parentsStr] =
-        section.trim().split("\x1f");
+      const [hash, shortHash, message, author, date, parentsStr] = section
+        .trim()
+        .split("\x1f");
       const parents = (parentsStr || "")
         .split(" ")
         .map((p) => p.trim())
