@@ -243,12 +243,21 @@ export function DiffDialog({
     return () => window.removeEventListener("message", handleMessage);
   }, [commit, open, repoPath, vscode, selectedFiles]);
 
+  // Memoize the fully parsed diff structure (including blocks/lines) for rendering
+  const fullyParsedDiff = useMemo(() => {
+    if (!open || !rawDiff) return [];
+    try {
+      return parseDiff(rawDiff);
+    } catch (err) {
+      console.error("Failed to parse diff", err);
+      return [];
+    }
+  }, [rawDiff, open]);
+
   // Render custom highlighted diff
   const renderedDiffItems = useMemo(() => {
-    if (!open || !rawDiff) return null;
-    try {
-      const allFiles = parseDiff(rawDiff);
-      if (allFiles.length === 0) {
+    if (!open || !rawDiff || fullyParsedDiff.length === 0) {
+      if (open && rawDiff && fullyParsedDiff.length === 0) {
         return (
           <div className="flex flex-col items-center justify-center py-24 text-muted-foreground/50">
             <div className="text-[11px] font-medium tracking-wider uppercase">
@@ -257,110 +266,102 @@ export function DiffDialog({
           </div>
         );
       }
-
-      const displayedFiles = allFiles.slice(0, visibleFiles);
-
-      return displayedFiles.map((file, fileIdx) => {
-        const filePath = getCanonicalPath(file);
-        const isDeleted = file.isDeleted || file.newName === "/dev/null";
-        const isNew = file.isNew || file.oldName === "/dev/null";
-        const isRename =
-          file.isRename ||
-          (file.oldName !== file.newName && !isNew && !isDeleted);
-
-        const fileTypeLabel = isDeleted
-          ? "deleted"
-          : isNew
-            ? "added"
-            : isRename
-              ? "renamed"
-              : "modified";
-
-        return (
-          <div
-            key={`${filePath}-${fileIdx}`}
-            className="mb-6 border border-border rounded-md overflow-hidden bg-background shadow-sm"
-          >
-            <div className="bg-muted/50 px-3 py-1.5 border-b border-border flex items-center justify-between">
-              <span className="font-mono text-[11px] truncate opacity-80">
-                {filePath}
-              </span>
-              <span
-                className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${
-                  isNew
-                    ? "bg-emerald-500/20 text-emerald-400"
-                    : isDeleted
-                      ? "bg-rose-500/20 text-rose-400"
-                      : isRename
-                        ? "bg-amber-500/20 text-amber-400"
-                        : "bg-blue-500/10 text-blue-400"
-                }`}
-              >
-                {fileTypeLabel}
-              </span>
-            </div>
-            <div className="divide-y divide-border/30">
-              {file.blocks.length === 0 ? (
-                <div className="py-8 text-center text-muted-foreground/40 italic text-[10px] uppercase">
-                  (no file changes)
-                </div>
-              ) : (
-                file.blocks.map((block, blockIdx) => (
-                  <div key={blockIdx} className="bg-muted/5">
-                    <div className="px-3 py-1 text-[10px] text-muted-foreground font-mono bg-muted/10 italic border-y border-border/20">
-                      {block.header}
-                    </div>
-                    {block.lines.map((line, lineIdx) => {
-                      const highlitContent = DiffHighlighter.highlight(
-                        line.content,
-                      );
-                      const typeClass =
-                        line.type === "insert"
-                          ? "bg-emerald-500/10 text-emerald-300/90"
-                          : line.type === "delete"
-                            ? "bg-rose-500/10 text-rose-300/90"
-                            : "hover:bg-muted/10";
-
-                      return (
-                        <div
-                          key={lineIdx}
-                          className={`flex font-mono text-[11px] leading-relaxed group border-b last:border-b-0 border-border/5 ${typeClass}`}
-                        >
-                          <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
-                            {line.oldNumber || ""}
-                          </div>
-                          <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
-                            {line.newNumber || ""}
-                          </div>
-                          <div
-                            className="px-4 py-0.5 whitespace-pre break-all overflow-x-auto flex-1 font-syntax transition-opacity"
-                            dangerouslySetInnerHTML={{ __html: highlitContent }}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        );
-      });
-    } catch (err) {
-      console.error("Failed to parse diff", err);
-      return <div className="p-4 text-destructive">Error rendering diff</div>;
+      return null;
     }
-  }, [rawDiff, open, visibleFiles]);
+
+    const displayedFiles = fullyParsedDiff.slice(0, visibleFiles);
+
+    return displayedFiles.map((file, fileIdx) => {
+      const filePath = getCanonicalPath(file);
+      const isDeleted = file.isDeleted || file.newName === "/dev/null";
+      const isNew = file.isNew || file.oldName === "/dev/null";
+      const isRename =
+        file.isRename ||
+        (file.oldName !== file.newName && !isNew && !isDeleted);
+
+      const fileTypeLabel = isDeleted
+        ? "deleted"
+        : isNew
+          ? "added"
+          : isRename
+            ? "renamed"
+            : "modified";
+
+      return (
+        <div
+          key={`${filePath}-${fileIdx}`}
+          className="mb-6 border border-border rounded-md overflow-hidden bg-background shadow-sm"
+        >
+          <div className="bg-muted/50 px-3 py-1.5 border-b border-border flex items-center justify-between">
+            <span className="font-mono text-[11px] truncate opacity-80">
+              {filePath}
+            </span>
+            <span
+              className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${
+                isNew
+                  ? "bg-emerald-500/20 text-emerald-400"
+                  : isDeleted
+                    ? "bg-rose-500/20 text-rose-400"
+                    : isRename
+                      ? "bg-amber-500/20 text-amber-400"
+                      : "bg-blue-500/10 text-blue-400"
+              }`}
+            >
+              {fileTypeLabel}
+            </span>
+          </div>
+          <div className="divide-y divide-border/30">
+            {file.blocks.length === 0 ? (
+              <div className="py-8 text-center text-muted-foreground/40 italic text-[10px] uppercase">
+                (no file changes)
+              </div>
+            ) : (
+              file.blocks.map((block, blockIdx) => (
+                <div key={blockIdx} className="bg-muted/5">
+                  <div className="px-3 py-1 text-[10px] text-muted-foreground font-mono bg-muted/10 italic border-y border-border/20">
+                    {block.header}
+                  </div>
+                  {block.lines.map((line, lineIdx) => {
+                    const highlitContent = DiffHighlighter.highlight(
+                      line.content,
+                    );
+                    const typeClass =
+                      line.type === "insert"
+                        ? "bg-emerald-500/10 text-emerald-300/90"
+                        : line.type === "delete"
+                          ? "bg-rose-500/10 text-rose-300/90"
+                          : "hover:bg-muted/10";
+
+                    return (
+                      <div
+                        key={lineIdx}
+                        className={`flex font-mono text-[11px] leading-relaxed group border-b last:border-b-0 border-border/5 ${typeClass}`}
+                      >
+                        <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
+                          {line.oldNumber || ""}
+                        </div>
+                        <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
+                          {line.newNumber || ""}
+                        </div>
+                        <div
+                          className="px-4 py-0.5 whitespace-pre break-all overflow-x-auto flex-1 font-syntax transition-opacity"
+                          dangerouslySetInnerHTML={{ __html: highlitContent }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      );
+    });
+  }, [fullyParsedDiff, open, rawDiff, visibleFiles]);
 
   const hasMoreFiles = useMemo(() => {
-    if (!rawDiff) return false;
-    try {
-      const files = parseDiff(rawDiff);
-      return files.length > visibleFiles;
-    } catch {
-      return false;
-    }
-  }, [rawDiff, visibleFiles]);
+    return fullyParsedDiff.length > visibleFiles;
+  }, [fullyParsedDiff, visibleFiles]);
 
   const handleCodestoryCommand = (command: string, intent?: string) => {
     const isCommit = command === "commit";
