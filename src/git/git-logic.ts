@@ -111,10 +111,7 @@ export async function isGitRepo(repoPath: string): Promise<boolean> {
 
 export async function hasGitChanges(repoPath: string): Promise<boolean> {
   try {
-    const status = await runGitWithTempIndex(repoPath, [
-      "status",
-      "--porcelain",
-    ]);
+    const status = await runGit(repoPath, ["status", "--porcelain"]);
     return status.trim().length > 0;
   } catch {
     return false;
