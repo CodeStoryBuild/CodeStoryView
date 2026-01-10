@@ -91,6 +91,7 @@ export function DiffDialog({
   } | null>(apiConfiguration || null);
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [visibleFiles, setVisibleFiles] = useState(10);
+  const [expandedBlocks, setExpandedBlocks] = useState<Set<string>>(new Set());
 
   // Ref to preserve selection state across working dir reloads
   const preservedSelectionRef = useRef<Set<string> | null>(null);
@@ -112,6 +113,7 @@ export function DiffDialog({
   // Reset visible files when rawDiff changes
   useEffect(() => {
     setVisibleFiles(10);
+    setExpandedBlocks(new Set());
   }, [rawDiff]);
 
   // Infinite scroll for files
@@ -297,15 +299,14 @@ export function DiffDialog({
               {filePath}
             </span>
             <span
-              className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${
-                isNew
-                  ? "bg-emerald-500/20 text-emerald-400"
-                  : isDeleted
-                    ? "bg-rose-500/20 text-rose-400"
-                    : isRename
-                      ? "bg-amber-500/20 text-amber-400"
-                      : "bg-blue-500/10 text-blue-400"
-              }`}
+              className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${isNew
+                ? "bg-emerald-500/20 text-emerald-400"
+                : isDeleted
+                  ? "bg-rose-500/20 text-rose-400"
+                  : isRename
+                    ? "bg-amber-500/20 text-amber-400"
+                    : "bg-blue-500/10 text-blue-400"
+                }`}
             >
               {fileTypeLabel}
             </span>
@@ -321,35 +322,70 @@ export function DiffDialog({
                   <div className="px-3 py-1 text-[10px] text-muted-foreground font-mono bg-muted/10 italic border-y border-border/20">
                     {block.header}
                   </div>
-                  {block.lines.map((line, lineIdx) => {
-                    const highlitContent = DiffHighlighter.highlight(
-                      line.content,
-                    );
-                    const typeClass =
-                      line.type === "insert"
-                        ? "bg-emerald-500/10 text-emerald-300/90"
-                        : line.type === "delete"
-                          ? "bg-rose-500/10 text-rose-300/90"
-                          : "hover:bg-muted/10";
+                  {(() => {
+                    const blockLines = block.lines;
+                    const blockId = `${fileIdx}-${blockIdx}`;
+                    const isExpanded = expandedBlocks.has(blockId);
+                    const limit = 1000;
+                    const shouldTruncate = blockLines.length > limit && !isExpanded;
+                    const displayedLines = shouldTruncate
+                      ? blockLines.slice(0, limit)
+                      : blockLines;
 
                     return (
-                      <div
-                        key={lineIdx}
-                        className={`flex font-mono text-[11px] leading-relaxed group border-b last:border-b-0 border-border/5 ${typeClass}`}
-                      >
-                        <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
-                          {line.oldNumber || ""}
-                        </div>
-                        <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
-                          {line.newNumber || ""}
-                        </div>
-                        <div
-                          className="px-4 py-0.5 whitespace-pre break-all overflow-x-auto flex-1 font-syntax transition-opacity"
-                          dangerouslySetInnerHTML={{ __html: highlitContent }}
-                        />
-                      </div>
+                      <>
+                        {displayedLines.map((line, lineIdx) => {
+                          const highlitContent = DiffHighlighter.highlight(
+                            line.content,
+                          );
+                          const typeClass =
+                            line.type === "insert"
+                              ? "bg-emerald-500/10 text-emerald-300/90"
+                              : line.type === "delete"
+                                ? "bg-rose-500/10 text-rose-300/90"
+                                : "hover:bg-muted/10";
+
+                          return (
+                            <div
+                              key={lineIdx}
+                              className={`flex font-mono text-[11px] leading-relaxed group border-b last:border-b-0 border-border/5 ${typeClass}`}
+                            >
+                              <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
+                                {line.oldNumber || ""}
+                              </div>
+                              <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
+                                {line.newNumber || ""}
+                              </div>
+                              <div
+                                className="px-4 py-0.5 whitespace-pre break-all overflow-x-auto flex-1 font-syntax transition-opacity"
+                                dangerouslySetInnerHTML={{
+                                  __html: highlitContent,
+                                }}
+                              />
+                            </div>
+                          );
+                        })}
+                        {shouldTruncate && (
+                          <div className="py-2 px-3 bg-muted/10 border-t border-border/5 flex items-center justify-center">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 text-[10px] text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                setExpandedBlocks((prev) => {
+                                  const next = new Set(prev);
+                                  next.add(blockId);
+                                  return next;
+                                });
+                              }}
+                            >
+                              Show {blockLines.length - limit} more lines...
+                            </Button>
+                          </div>
+                        )}
+                      </>
                     );
-                  })}
+                  })()}
                 </div>
               ))
             )}
@@ -622,11 +658,10 @@ export function DiffDialog({
                             className={`
                                 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono whitespace-nowrap
                                 border transition-all cursor-pointer shrink-0
-                                ${
-                                  selectedFiles.has(file)
-                                    ? "bg-primary/10 border-primary/30 text-primary"
-                                    : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
-                                }
+                                ${selectedFiles.has(file)
+                                ? "bg-primary/10 border-primary/30 text-primary"
+                                : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
+                              }
                               `}
                           >
                             {selectedFiles.has(file) ? (
@@ -678,9 +713,8 @@ export function DiffDialog({
                             }
                           >
                             <RotateCcw
-                              className={`h-3 w-3 ${
-                                isCurrentExecuting ? "animate-spin" : ""
-                              }`}
+                              className={`h-3 w-3 ${isCurrentExecuting ? "animate-spin" : ""
+                                }`}
                             />
                             Fix
                           </Button>
