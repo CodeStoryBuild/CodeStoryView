@@ -349,6 +349,9 @@ function runCommand(
   });
 }
 
+// Cache for git directories to avoid repeated rev-parse calls
+const gitDirCache = new Map<string, string>();
+
 /**
  * Runs a git command using a temporary index for robust untracked changes detection.
  * This is useful for status/diff commands where we want to include untracked files.
@@ -363,13 +366,17 @@ async function runGitWithTempIndex(
   );
 
   try {
-    // Find the real .git dir
-    const gitDirRelative = (
-      await runGit(repoPath, ["rev-parse", "--git-dir"])
-    ).trim();
-    const gitDir = path.isAbsolute(gitDirRelative)
-      ? gitDirRelative
-      : path.join(repoPath, gitDirRelative);
+    // Find the real .git dir (cached)
+    let gitDir = gitDirCache.get(repoPath);
+    if (!gitDir) {
+      const gitDirRelative = (
+        await runGit(repoPath, ["rev-parse", "--git-dir"])
+      ).trim();
+      gitDir = path.isAbsolute(gitDirRelative)
+        ? gitDirRelative
+        : path.join(repoPath, gitDirRelative);
+      gitDirCache.set(repoPath, gitDir);
+    }
     const currentIndex = path.join(gitDir, "index");
 
     // Copy current index if it exists
