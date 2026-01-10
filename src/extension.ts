@@ -182,13 +182,24 @@ export function activate(context: vscode.ExtensionContext) {
         hasMore,
       };
 
+      const commitsChanged = (a: any[], b: any[]) => {
+        const hasWorkA = a[0]?.isWorkingDir;
+        const hasWorkB = b[0]?.isWorkingDir;
+        if (hasWorkA !== hasWorkB) return true;
+
+        const headA = hasWorkA ? a[1]?.id : a[0]?.id;
+        const headB = hasWorkB ? b[1]?.id : b[0]?.id;
+        return headA !== headB;
+      };
+
       const stateChanged =
         !lastState ||
+        lastState.branches.length !== newState.branches.length ||
         JSON.stringify(lastState.branches) !==
           JSON.stringify(newState.branches) ||
         lastState.currentBranch !== newState.currentBranch ||
         lastState.isDetached !== newState.isDetached ||
-        JSON.stringify(lastState.commits) !== JSON.stringify(newState.commits);
+        commitsChanged(lastState.commits, newState.commits);
 
       if (
         source !== "manual" &&
@@ -302,6 +313,57 @@ export function activate(context: vscode.ExtensionContext) {
     );
     repoWatcher = vscode.workspace.createFileSystemWatcher(gitRefsPattern);
 
+    // Initial load of .gitignore
+    let ignoredPatterns: string[] = [];
+    const loadGitignore = () => {
+      try {
+        const gitignorePath = path.join(repoPath, ".gitignore");
+        if (fs.existsSync(gitignorePath)) {
+          const content = fs.readFileSync(gitignorePath, "utf-8");
+          ignoredPatterns = content
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line && !line.startsWith("#"));
+        }
+      } catch (e) {
+        console.error("Failed to read .gitignore", e);
+      }
+    };
+    loadGitignore();
+
+    const isIgnored = (relPath: string) => {
+      if (relPath.startsWith(".git" + path.sep) || relPath === ".git")
+        return true;
+      // Simple heuristic for common heavy folders if no .gitignore or in addition to it
+      if (
+        relPath.startsWith("node_modules" + path.sep) ||
+        relPath === "node_modules"
+      )
+        return true;
+      if (relPath.startsWith("dist" + path.sep) || relPath === "dist")
+        return true;
+      if (relPath.startsWith("out" + path.sep) || relPath === "out")
+        return true;
+
+      // Check against .gitignore patterns (basic glob-ish support)
+      for (const pattern of ignoredPatterns) {
+        if (pattern.endsWith("/")) {
+          const dirPattern = pattern.slice(0, -1);
+          if (
+            relPath === dirPattern ||
+            relPath.startsWith(dirPattern + path.sep)
+          )
+            return true;
+        } else if (
+          relPath === pattern ||
+          relPath.endsWith(path.sep + pattern)
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     const gitRefresh = () => {
       pendingGitChange = true;
       if (debounceTimer) clearTimeout(debounceTimer);
@@ -318,11 +380,13 @@ export function activate(context: vscode.ExtensionContext) {
     const nonRepoRefresh = (uri?: vscode.Uri) => {
       const fsPath = uri?.fsPath || repoPath;
       const rel = path.relative(repoPath, fsPath);
-      if (rel.split(path.sep)[0] === ".git") {
-        pendingWorkdirChange = true;
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => handleFileChange(), 1000);
+
+      if (isIgnored(rel)) {
         return;
+      }
+
+      if (rel === ".gitignore") {
+        loadGitignore();
       }
 
       pendingWorkdirChange = true;
