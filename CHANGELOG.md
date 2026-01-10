@@ -1,3 +1,7 @@
+## V0.1.12
+
+- Fix: Extension was not packaged correctly, fixed by updating build script
+
 ## V0.1.11
 
 - Changed: Use vscode terminal shellIntegration to execute commands much more robustly
