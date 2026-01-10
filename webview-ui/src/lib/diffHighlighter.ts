@@ -4,7 +4,7 @@
  */
 
 const UNIVERSAL_REGEX =
-  /(?<comment>\/\/.*|\/\*[\s\S]*?\*\/|#.*)|(?<string>"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*')|(?<keyword>\b(?:if|else|for|while|return|class|def|function|var|let|const|import|from|public|private|static)\b)|(?<number>\b\d+(\.\d+)?\b)|(?<operator>[+\-*\/%&|^!<>]=?|==|=>)|(?<call>\b\w+(?=\())/g;
+  /(?<comment>\/\/.*|\/\*[\s\S]*?\*\/|#.*)|(?<string>"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'|`[^`\\]*(?:\\.[^`\\]*)*`)|(?<keyword>\b(?:if|else|for|while|return|class|interface|type|enum|def|function|async|await|var|let|const|import|export|from|public|private|static|readonly|namespace|package|using|try|catch|finally|throw|new|delete|in|of|as|is|extends|implements)\b)|(?<type>\b(?:string|number|boolean|any|void|never|unknown|object|int|float|double|char|long|short|byte|bool|true|false|null|undefined)\b)|(?<number>\b\d+(\.\d+)?\b)|(?<operator>[+\-*\/%&|^!<>]=?|==|=>|\?\?|\.\.)|(?<call>\b\w+(?=\())/g;
 
 export class DiffHighlighter {
   /**
