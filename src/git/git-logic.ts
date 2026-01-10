@@ -1,5 +1,6 @@
 import * as cp from "child_process";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 
 export async function isGitLocked(repoPath: string): Promise<boolean> {
