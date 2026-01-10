@@ -1,3 +1,9 @@
+
+## V0.1.11
+
+- Changed: Use vscode terminal shellIntegration to execute commands much more robustly
+- Changed: Bump Codestory Cli version to 0.1.11
+
 ## V0.1.10
 
 - Fix: Reload only when repository content changes

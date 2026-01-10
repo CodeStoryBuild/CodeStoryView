@@ -6,7 +6,7 @@ import AdmZip from "adm-zip";
 import * as tar from "tar";
 import { pipeline } from "stream/promises";
 
-const MINIMUM_CST_VERSION = "0.1.10";
+const MINIMUM_CST_VERSION = "0.1.11";
 
 interface Asset {
   name: string;
