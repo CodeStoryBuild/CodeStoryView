@@ -52,10 +52,11 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run package",
+    "vscode:prepublish": "npm run package:all",
     "compile": "webpack",
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
+    "package:all": "npm run build:webview && npm run package",
     "build:webview": "npm --prefix webview-ui run build:dist",
     "build:all": "npm run build:webview && npm run compile",
     "compile-tests": "tsc -p . --outDir out",
