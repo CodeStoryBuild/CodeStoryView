@@ -53,6 +53,15 @@ interface GitVisualizerProps {
     model: string;
     globalConfig: Record<string, any>;
   } | null;
+  shellIntegrationStatus?: {
+    enabled: boolean;
+    ready: boolean;
+  };
+  executionState?: {
+    isExecuting: boolean;
+    hash?: string;
+    name?: string;
+  };
   onOpenApiManager?: () => void;
 }
 
@@ -63,6 +72,8 @@ export function GitVisualizer({
   selectedCommit,
   isLoading = false,
   apiConfiguration = null,
+  shellIntegrationStatus = { enabled: true, ready: true },
+  executionState = { isExecuting: false },
   onOpenApiManager,
 }: GitVisualizerProps) {
   type ReloadSource = "initial" | "manual" | "git" | "workdir" | "load_more";
@@ -73,9 +84,6 @@ export function GitVisualizer({
   const [cyInstance, setCyInstance] = useState<Core | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDiffOpen, setIsDiffOpen] = useState(false);
-  const [executingCommits, setExecutingCommits] = useState<Set<string>>(
-    new Set(),
-  );
   const [commitLimit, setCommitLimit] = useState(100);
   const [executionTime, setExecutionTime] = useState<number>(0);
   const lastReloadSourceRef = useRef<ReloadSource>("initial");
@@ -199,18 +207,16 @@ export function GitVisualizer({
         case "displayOutput":
           // console.log(message.data);
           break;
-        case "resetExecuting":
-          setExecutingCommits(new Set());
+        case "executionState":
+          // The executionState prop is now used to drive the UI,
+          // so no direct DOM manipulation is needed here.
+          // The `elements` memo will react to changes in `executionState`.
+          break;
+        case "resetExecution":
+          // The executionState prop is now used to drive the UI,
+          // so no direct DOM manipulation is needed here.
+          // The `elements` memo will react to changes in `executionState`.
           setExecutionTime(0);
-
-          // Reset node data and styles immediately
-          if (cyRef.current) {
-            cyRef.current.nodes().forEach((node: any) => {
-              node.data("isExecuting", "false");
-              node.removeStyle();
-              node.removeClass("was-pulsing");
-            });
-          }
           break;
       }
     };
@@ -233,7 +239,10 @@ export function GitVisualizer({
           isMerge: c.isMerge,
           isMergeAncestor: c.isMergeAncestor,
           isRoot: c.isRoot,
-          ...(executingCommits.has(c.hash) ? { isExecuting: "true" } : {}),
+          isExecuting:
+            executionState.isExecuting && c.hash === executionState.hash
+              ? "true"
+              : "false",
         },
       };
     });
@@ -247,7 +256,7 @@ export function GitVisualizer({
       }
     }
     return [...nodes, ...edges];
-  }, [commits, executingCommits]);
+  }, [commits, executionState]);
 
   const layout = useMemo(
     () => ({
@@ -631,21 +640,9 @@ export function GitVisualizer({
     [cyInstance, onCommitSelect],
   );
 
-  // Memoized callback for DiffDialog onExecute to prevent unnecessary re-renders
+  // No longer need manual handleExecute as it's driven by extension state
   const handleExecute = useCallback((hash: string) => {
-    // Mark this commit as executing
-    setExecutionTime(Date.now());
-    setExecutingCommits((prev) => {
-      const next = new Set(prev);
-      next.add(hash);
-      return next;
-    });
-
-    // Also set the node data so the Cy instance can pick it up immediately
-    if (cyRef.current) {
-      const node = cyRef.current.getElementById(hash);
-      if (node && node.nonempty()) node.data("isExecuting", "true");
-    }
+    // This is now purely local if we wanted but we rely on the extension syncing back
   }, []);
 
   if (commits.length === 0 && !showLoading) {
@@ -754,11 +751,15 @@ export function GitVisualizer({
         repoPath={repoPath}
         branch={branch}
         commit={selectedCommit}
-        isAnyExecuting={executingCommits.size > 0}
+        isAnyExecuting={executionState.isExecuting}
         isCurrentExecuting={
-          selectedCommit ? executingCommits.has(selectedCommit.hash) : false
+          selectedCommit && executionState.isExecuting
+            ? selectedCommit.hash === executionState.hash
+            : false
         }
         apiConfiguration={apiConfiguration}
+        shellIntegrationStatus={shellIntegrationStatus}
+        executionState={executionState}
         onOpenApiManager={onOpenApiManager}
         onExecute={handleExecute}
       />

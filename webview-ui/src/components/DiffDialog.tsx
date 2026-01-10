@@ -45,6 +45,8 @@ export function DiffDialog({
   branch,
   commit,
   apiConfiguration,
+  shellIntegrationStatus,
+  executionState,
   onOpenApiManager,
   onExecute,
   isAnyExecuting = false,
@@ -60,6 +62,15 @@ export function DiffDialog({
     model: string;
     globalConfig: Record<string, any>;
   } | null;
+  shellIntegrationStatus?: {
+    enabled: boolean;
+    ready: boolean;
+  };
+  executionState?: {
+    isExecuting: boolean;
+    hash?: string;
+    name?: string;
+  };
   onOpenApiManager?: () => void;
   onExecute?: (hash: string) => void;
   isAnyExecuting?: boolean;
@@ -143,6 +154,12 @@ export function DiffDialog({
   const isMerge = commit && commit.isMerge;
   const isMergeAncestor = commit && commit.isMergeAncestor;
   const isIneligible = isRoot || isMerge || isMergeAncestor;
+
+  const isShellIntegrationEnabled = shellIntegrationStatus?.enabled ?? true;
+  const isShellReady = shellIntegrationStatus?.ready ?? true;
+
+  const effectivelyExecuting =
+    isAnyExecuting || executionState?.isExecuting || false;
 
   // File selection helpers
   const toggleFileSelection = (file: string) => {
@@ -231,17 +248,33 @@ export function DiffDialog({
     if (!open || !rawDiff) return null;
     try {
       const allFiles = parseDiff(rawDiff);
+      if (allFiles.length === 0) {
+        return (
+          <div className="flex flex-col items-center justify-center py-24 text-muted-foreground/50">
+            <div className="text-[11px] font-medium tracking-wider uppercase">
+              No files modified
+            </div>
+          </div>
+        );
+      }
+
       const displayedFiles = allFiles.slice(0, visibleFiles);
 
       return displayedFiles.map((file, fileIdx) => {
         const filePath = getCanonicalPath(file);
-        const isDeleted = file.newName === "/dev/null";
-        const isNew = file.oldName === "/dev/null";
+        const isDeleted = file.isDeleted || file.newName === "/dev/null";
+        const isNew = file.isNew || file.oldName === "/dev/null";
+        const isRename =
+          file.isRename ||
+          (file.oldName !== file.newName && !isNew && !isDeleted);
+
         const fileTypeLabel = isDeleted
           ? "deleted"
           : isNew
             ? "added"
-            : "modified";
+            : isRename
+              ? "renamed"
+              : "modified";
 
         return (
           <div
@@ -258,49 +291,57 @@ export function DiffDialog({
                     ? "bg-emerald-500/20 text-emerald-400"
                     : isDeleted
                       ? "bg-rose-500/20 text-rose-400"
-                      : "bg-blue-500/10 text-blue-400"
+                      : isRename
+                        ? "bg-amber-500/20 text-amber-400"
+                        : "bg-blue-500/10 text-blue-400"
                 }`}
               >
                 {fileTypeLabel}
               </span>
             </div>
             <div className="divide-y divide-border/30">
-              {file.blocks.map((block, blockIdx) => (
-                <div key={blockIdx} className="bg-muted/5">
-                  <div className="px-3 py-1 text-[10px] text-muted-foreground font-mono bg-muted/10 italic border-y border-border/20">
-                    {block.header}
-                  </div>
-                  {block.lines.map((line, lineIdx) => {
-                    const highlitContent = DiffHighlighter.highlight(
-                      line.content,
-                    );
-                    const typeClass =
-                      line.type === "insert"
-                        ? "bg-emerald-500/10 text-emerald-300/90"
-                        : line.type === "delete"
-                          ? "bg-rose-500/10 text-rose-300/90"
-                          : "hover:bg-muted/10";
-
-                    return (
-                      <div
-                        key={lineIdx}
-                        className={`flex font-mono text-[11px] leading-relaxed group border-b last:border-b-0 border-border/5 ${typeClass}`}
-                      >
-                        <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
-                          {line.oldNumber || ""}
-                        </div>
-                        <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
-                          {line.newNumber || ""}
-                        </div>
-                        <div
-                          className="px-4 py-0.5 whitespace-pre break-all overflow-x-auto flex-1 font-syntax transition-opacity"
-                          dangerouslySetInnerHTML={{ __html: highlitContent }}
-                        />
-                      </div>
-                    );
-                  })}
+              {file.blocks.length === 0 ? (
+                <div className="py-8 text-center text-muted-foreground/40 italic text-[10px] uppercase">
+                  (no file changes)
                 </div>
-              ))}
+              ) : (
+                file.blocks.map((block, blockIdx) => (
+                  <div key={blockIdx} className="bg-muted/5">
+                    <div className="px-3 py-1 text-[10px] text-muted-foreground font-mono bg-muted/10 italic border-y border-border/20">
+                      {block.header}
+                    </div>
+                    {block.lines.map((line, lineIdx) => {
+                      const highlitContent = DiffHighlighter.highlight(
+                        line.content,
+                      );
+                      const typeClass =
+                        line.type === "insert"
+                          ? "bg-emerald-500/10 text-emerald-300/90"
+                          : line.type === "delete"
+                            ? "bg-rose-500/10 text-rose-300/90"
+                            : "hover:bg-muted/10";
+
+                      return (
+                        <div
+                          key={lineIdx}
+                          className={`flex font-mono text-[11px] leading-relaxed group border-b last:border-b-0 border-border/5 ${typeClass}`}
+                        >
+                          <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
+                            {line.oldNumber || ""}
+                          </div>
+                          <div className="w-10 shrink-0 text-right px-2 py-0.5 text-muted-foreground/30 border-r border-border/20 select-none bg-muted/20 group-hover:bg-muted/30 transition-colors">
+                            {line.newNumber || ""}
+                          </div>
+                          <div
+                            className="px-4 py-0.5 whitespace-pre break-all overflow-x-auto flex-1 font-syntax transition-opacity"
+                            dangerouslySetInnerHTML={{ __html: highlitContent }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         );
@@ -497,8 +538,9 @@ export function DiffDialog({
                               className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
                               onClick={() => handleCodestoryCommand("commit")}
                               disabled={
-                                isAnyExecuting ||
-                                (parsedFiles.length > 0 && noFilesSelected)
+                                effectivelyExecuting ||
+                                (parsedFiles.length > 0 && noFilesSelected) ||
+                                !isShellIntegrationEnabled
                               }
                             >
                               <Save className="h-3 w-3" />
@@ -509,6 +551,11 @@ export function DiffDialog({
                         {isAnyExecuting && !isCurrentExecuting && (
                           <TooltipContent side="bottom">
                             Another operation is currently executing
+                          </TooltipContent>
+                        )}
+                        {!isShellIntegrationEnabled && (
+                          <TooltipContent side="bottom">
+                            Shell Integration must be enabled to run commands
                           </TooltipContent>
                         )}
                       </Tooltip>
@@ -625,7 +672,9 @@ export function DiffDialog({
                             size="sm"
                             className="h-7 text-[11px] gap-1.5 border-border hover:bg-accent"
                             onClick={() => handleCodestoryCommand("expand")}
-                            disabled={isAnyExecuting}
+                            disabled={
+                              effectivelyExecuting || !isShellIntegrationEnabled
+                            }
                           >
                             <RotateCcw
                               className={`h-3 w-3 ${
@@ -641,11 +690,26 @@ export function DiffDialog({
                           Another operation is currently executing
                         </TooltipContent>
                       )}
+                      {!isShellIntegrationEnabled && (
+                        <TooltipContent side="bottom">
+                          Shell Integration must be enabled to run commands
+                        </TooltipContent>
+                      )}
                     </Tooltip>
                   </TooltipProvider>
                 </div>
               ) : null}
             </div>
+
+            {!isShellIntegrationEnabled && (
+              <div className="mx-3 sm:mx-4 mb-2 p-2 bg-destructive/10 border border-destructive/20 rounded-md flex items-center gap-2 text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <p className="text-[10px] font-medium">
+                  VS Code Shell Integration is disabled. Please enable it in
+                  settings to use Codestory commands.
+                </p>
+              </div>
+            )}
           </DialogHeader>
 
           <div className="flex-1 overflow-auto p-2 sm:p-4 bg-background custom-scrollbar">

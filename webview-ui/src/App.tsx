@@ -37,6 +37,15 @@ function App() {
   const [cstStatus, setCstStatus] = useState<
     "idle" | "downloading" | "extracting" | "ready" | "error"
   >("idle");
+  const [shellIntegrationStatus, setShellIntegrationStatus] = useState<{
+    enabled: boolean;
+    ready: boolean;
+  }>({ enabled: true, ready: true });
+  const [executionState, setExecutionState] = useState<{
+    isExecuting: boolean;
+    hash?: string;
+    name?: string;
+  }>({ isExecuting: false });
 
   const [showApiManager, setShowApiManager] = useState(false);
   const [apiConfiguration, setApiConfiguration] = useState<{
@@ -56,7 +65,7 @@ function App() {
   >("prompt");
   const [tempIgnorePrompt, setTempIgnorePrompt] = useState(false);
 
-  // Initialize API configuration from localStorage and extension SecretStorage
+  // Initialize API configuration
   useEffect(() => {
     const savedProvider =
       localStorage.getItem("Codestory_selected_provider") || "";
@@ -78,9 +87,7 @@ function App() {
     };
 
     window.addEventListener("message", handleMessage);
-    // Ask the extension for the stored global config (SecretStorage)
     vscode.postMessage({ command: "getGlobalConfig" });
-
     return () => window.removeEventListener("message", handleMessage);
   }, [vscode]);
 
@@ -90,18 +97,13 @@ function App() {
   };
 
   useEffect(() => {
-    // Sync theme with VS Code
     const updateTheme = () => {
       const isDark =
         document.body.classList.contains("vscode-dark") ||
         document.body.classList.contains("vscode-high-contrast");
-      if (isDark) {
-        document.documentElement.classList.add("dark");
-      } else {
-        document.documentElement.classList.remove("dark");
-      }
+      if (isDark) document.documentElement.classList.add("dark");
+      else document.documentElement.classList.remove("dark");
     };
-
     updateTheme();
     const observer = new MutationObserver(updateTheme);
     observer.observe(document.body, {
@@ -111,8 +113,6 @@ function App() {
     return () => observer.disconnect();
   }, []);
 
-  // Request the workspace directory from the extension in case the extension's initial
-  // postMessage fired before the webview finished mounting.
   useEffect(() => {
     vscode.postMessage({ command: "requestWorkspaceDirectory" });
   }, [vscode]);
@@ -132,10 +132,7 @@ function App() {
         branch,
         lastPromptedBranch,
       });
-      vscode.postMessage({
-        command: "loadRepo",
-        directory: path,
-      });
+      vscode.postMessage({ command: "loadRepo", directory: path });
     },
     [branch, lastPromptedBranch, vscode],
   );
@@ -160,12 +157,10 @@ function App() {
           if (message.branches) setBranches(message.branches);
           if (message.isDetached !== undefined)
             setIsDetached(message.isDetached);
-
           const newRepoBranch = message.currentBranch;
           const repoBranchChanged =
             repoBranch !== null && newRepoBranch !== repoBranch;
           setRepoBranch(newRepoBranch);
-
           if (isFirstLoad && newRepoBranch) {
             setIsFirstLoad(false);
             setBranch(newRepoBranch);
@@ -178,7 +173,6 @@ function App() {
             });
             return;
           }
-
           if (
             !message.isManual &&
             branchUpdateStrategy === "prompt" &&
@@ -210,33 +204,31 @@ function App() {
               branch: newRepoBranch,
               lastPromptedBranch: newRepoBranch,
             });
-
-            // If we auto-updated because the branch changed and strategy is "update",
-            // we now rely on GitVisualizer's effect to trigger the reload when the prop changes.
             if (
               branchUpdateStrategy === "update" &&
               newRepoBranch !== oldBranch &&
               oldBranch !== ""
-            ) {
+            )
               setIsLoading(true);
-            }
           }
-          break;
-        case "displayDiff":
-          // For now, log the diff. We could add a side panel or modal here.
-          console.log("Received diff:", message.diff);
           break;
         case "displayDirectory":
           if (message.directory) {
             setDraftRepoPath(message.directory);
-            // If we haven't loaded anything yet, try to load the workspace dir
-            if (!repoPath) {
-              handleLoadRepo(message.directory);
-            }
+            if (!repoPath) handleLoadRepo(message.directory);
           }
           break;
         case "cstStatus":
           setCstStatus(message.status);
+          break;
+        case "shellIntegrationStatus":
+          setShellIntegrationStatus({
+            enabled: message.enabled,
+            ready: message.ready,
+          });
+          break;
+        case "executionState":
+          setExecutionState(message.state);
           break;
       }
     };
@@ -250,15 +242,15 @@ function App() {
     isFirstLoad,
     lastPromptedBranch,
     selectedCommit,
+    repoBranch,
+    branchUpdateStrategy,
   ]);
 
-  // Memoized fallback branches array to prevent new array on every render
   const displayBranches = useMemo(
     () => (branches.length > 0 ? branches : [branch || "(not on a branch)"]),
     [branches, branch],
   );
 
-  // Memoized callbacks for BranchSelector
   const handleBranchSelect = useCallback(
     (b: string) => {
       setBranch(b);
@@ -270,9 +262,8 @@ function App() {
         branch: b,
         lastPromptedBranch: b,
       });
-      // Removed redundant vscode.postMessage as GitVisualizer's effect handles branch changes
     },
-    [vscode], // repoPath removed from deps as it's not used now
+    [vscode],
   );
 
   const handleReload = useCallback(() => {
@@ -285,17 +276,15 @@ function App() {
     });
   }, [repoPath, branch, vscode]);
 
-  // Memoized callbacks for GitVisualizer
   const handleOpenApiManager = useCallback(() => setShowApiManager(true), []);
-
-  const handleCommitSelect = useCallback((commit: any) => {
-    setSelectedCommit(commit);
-    console.log("Selected commit:", commit);
-  }, []);
+  const handleCommitSelect = useCallback(
+    (commit: any) => setSelectedCommit(commit),
+    [],
+  );
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden font-sans">
-      {/* Branch Selector - Top Left (minimal) */}
+    <div className="flex flex-col h-screen w-screen bg-background text-foreground overflow-hidden font-sans relative">
+      {/* Branch Selector */}
       {isLoaded && (
         <div className="absolute top-2 sm:top-4 left-2 sm:left-4 z-20">
           <div className="flex items-center gap-1 bg-card/80 backdrop-blur-md border border-border p-1 rounded-lg shadow-sm">
@@ -310,7 +299,7 @@ function App() {
         </div>
       )}
 
-      {/* API Settings Button - Bottom Left */}
+      {/* API Settings Button */}
       {isLoaded && (
         <div className="absolute bottom-2 sm:bottom-4 left-2 sm:left-4 z-20">
           <Button
@@ -332,7 +321,7 @@ function App() {
       )}
 
       {/* Main Content */}
-      <main className="flex-1 relative flex items-center justify-center">
+      <main className="flex-1 relative flex items-center justify-center min-h-0">
         {!isLoaded ? (
           <GitRepoSelector
             repoPath={draftRepoPath}
@@ -347,12 +336,15 @@ function App() {
             selectedCommit={selectedCommit}
             isLoading={isLoading}
             apiConfiguration={apiConfiguration}
+            shellIntegrationStatus={shellIntegrationStatus}
+            executionState={executionState}
             onOpenApiManager={handleOpenApiManager}
             onCommitSelect={handleCommitSelect}
           />
         )}
       </main>
 
+      {/* Branch Update Dialog */}
       <AlertDialog
         open={!!pendingBranch}
         onOpenChange={(open) => {
@@ -367,8 +359,7 @@ function App() {
             <AlertDialogTitle>Update Visualizer?</AlertDialogTitle>
             <AlertDialogDescription>
               Your local repository switched to branch{" "}
-              <strong>{pendingBranch}</strong>. Would you like to update the
-              visualizer to show this branch?
+              <strong>{pendingBranch}</strong>. Show this branch?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col items-end gap-3">
@@ -435,14 +426,14 @@ function App() {
                 htmlFor="ask-to-update-branch"
                 className="text-xs text-muted-foreground cursor-pointer"
               >
-                Remember my choice
+                Remember choice
               </Label>
             </div>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Footer / Tucked Selector */}
+      {/* Tucked Selector */}
       {isLoaded && (
         <GitRepoSelector
           repoPath={draftRepoPath}
@@ -461,21 +452,19 @@ function App() {
         currentGlobalConfig={apiConfiguration?.globalConfig}
       />
 
-      {/* CST Download Overlay */}
+      {/* CST Status Overlay */}
       {(cstStatus === "downloading" || cstStatus === "extracting") && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-4 p-6 bg-card border border-border rounded-xl shadow-2xl animate-in fade-in zoom-in duration-200">
-            <Spinner className="h-10 w-10 text-primary" />
-            <div className="flex flex-col items-center gap-1">
-              <h3 className="text-lg font-semibold">
-                {cstStatus === "downloading"
-                  ? "Downloading Codestory CLI..."
-                  : "Extracting CLI..."}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                This will only take a moment.
-              </p>
-            </div>
+            <Spinner className="h-8 w-8 text-primary" />
+            <h3 className="text-lg font-semibold">
+              {cstStatus === "downloading"
+                ? "Downloading Codestory CLI..."
+                : "Extracting CLI..."}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Please wait a moment.
+            </p>
           </div>
         </div>
       )}
