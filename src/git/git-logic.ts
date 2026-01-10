@@ -110,9 +110,10 @@ export async function isGitRepo(repoPath: string): Promise<boolean> {
 
 export async function hasGitChanges(repoPath: string): Promise<boolean> {
   try {
-    const status = await runGit(repoPath, ["status", "--porcelain"], {
-      allowErrors: true,
-    });
+    const status = await runGitWithTempIndex(repoPath, [
+      "status",
+      "--porcelain",
+    ]);
     return status.trim().length > 0;
   } catch {
     return false;
@@ -133,7 +134,7 @@ export async function fetchCommits(
         [
           "log",
           branch,
-          "--pretty=format:%H|%h|%s|%an|%ai|%P",
+          "--pretty=format:%H\x1f%h\x1f%s\x1f%an\x1f%ai\x1f%P",
           `--max-count=${limit + 1}`,
         ],
         { allowErrors: false },
@@ -142,24 +143,24 @@ export async function fetchCommits(
       const msg = (error && (error as any).message) || "";
       if (
         msg.includes("unknown revision") ||
-        msg.includes("ambiguous argument")
+        msg.includes("ambiguous argument") ||
+        msg.includes("does not have any commits yet")
       ) {
-        return { commits: [], hasMore: false };
+        logOutput = ""; // Handle empty repo or invalid branch
+      } else {
+        throw error;
       }
-      throw error;
     }
 
-    if (!logOutput.trim()) {
-      return { commits: [], hasMore: false };
-    }
-
-    const lines = logOutput.split("\n").filter((line) => line.trim());
+    const lines = logOutput
+      ? logOutput.split("\n").filter((line) => line.trim())
+      : [];
     const hasMore = lines.length > limit;
     const linesToProcess = hasMore ? lines.slice(0, limit) : lines;
 
     const commits: Commit[] = linesToProcess.map((line) => {
       const [hash, shortHash, message, author, date, parentsStr] =
-        line.split("|");
+        line.split("\x1f");
       const parents = (parentsStr || "")
         .split(" ")
         .map((p) => p.trim())
@@ -177,14 +178,15 @@ export async function fetchCommits(
       };
     });
 
-    // Detect uncommitted working directory changes and append a pseudo-commit at the end
+    // Detect uncommitted working directory changes and append a pseudo-commit at the beginning
     try {
-      const status = await runGit(repoPath, ["status", "--porcelain"], {
-        allowErrors: true,
-      });
+      const status = await runGitWithTempIndex(repoPath, [
+        "status",
+        "--porcelain",
+      ]);
       const trimmedStatus = status.trim();
       const hasChanges = trimmedStatus.length > 0;
-      if (hasChanges && commits.length > 0) {
+      if (hasChanges) {
         const head = commits[0]; // git log lists HEAD first
         commits.unshift({
           id: "WORKING_DIR",
@@ -193,7 +195,7 @@ export async function fetchCommits(
           message: "Working directory (uncommitted changes)",
           author: "workspace",
           date: new Date(0).toISOString(), // Use a stable date
-          parents: [head.hash],
+          parents: head ? [head.hash] : [],
           // extra metadata for the client to style differently
           kind: "working",
           isWorkingDir: true,
@@ -293,51 +295,22 @@ export async function fetchDiff(
   try {
     let diffText = "";
     if (commitHash === "WORKING_DIR") {
-      // Base diff: tracked changes vs HEAD (staged + unstaged)
-      diffText = await runGit(
-        repoPath,
-        ["diff", "HEAD", "--no-color", "--no-ext-diff"],
-        { allowErrors: true },
-      );
-
-      // Append diffs for untracked files
-      const listArgs = ["ls-files", "--others", "--exclude-standard", "-z"];
-      let untrackedRaw = "";
+      // Use a temporary index to include untracked files in the diff
+      let hasCommits = true;
       try {
-        untrackedRaw = await runGit(repoPath, listArgs, {
-          allowErrors: true,
-        });
+        await runGit(repoPath, ["rev-parse", "HEAD"]);
       } catch {
-        untrackedRaw = "";
+        hasCommits = false;
       }
-      const files = untrackedRaw
-        .split("\u0000")
-        .map((s) => s.trim())
-        .filter((s) => s.length > 0);
 
-      if (files.length > 0) {
-        for (const f of files) {
-          const perFile = await runGit(
-            repoPath,
-            [
-              "diff",
-              "--no-index",
-              "--no-color",
-              "--no-ext-diff",
-              "--",
-              "/dev/null",
-              f,
-            ],
-            { allowErrors: true },
-          );
-          if (perFile && perFile.trim().length > 0) {
-            if (diffText && !diffText.endsWith("\n")) {
-              diffText += "\n";
-            }
-            diffText += perFile;
-          }
-        }
-      }
+      const diffArgs = [
+        "diff",
+        hasCommits ? "HEAD" : "4b825dc642cb6eb9a060e54bf8d69288fbee4904", // empty tree hash
+        "--no-color",
+        "--no-ext-diff",
+      ];
+
+      diffText = await runGitWithTempIndex(repoPath, diffArgs);
     } else {
       diffText = await runGit(
         repoPath,
@@ -349,5 +322,74 @@ export async function fetchDiff(
     return diffText;
   } catch (error) {
     throw new Error((error as any).message || "Failed to get diff");
+  }
+}
+
+// Internal helper for running commands with custom env
+function runCommand(
+  command: string,
+  args: string[],
+  cwd: string,
+  env?: Record<string, string | undefined>,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    cp.execFile(
+      command,
+      args,
+      {
+        cwd,
+        env: env || process.env,
+        maxBuffer: 1024 * 1024 * 10,
+      },
+      (error, stdout, stderr) => {
+        if (error) {
+          return reject(stderr ? new Error(stderr.trim()) : error);
+        }
+        resolve(stdout);
+      },
+    );
+  });
+}
+
+/**
+ * Runs a git command using a temporary index for robust untracked changes detection.
+ * This is useful for status/diff commands where we want to include untracked files.
+ */
+async function runGitWithTempIndex(
+  repoPath: string,
+  args: string[],
+): Promise<string> {
+  const tempIndexFile = path.join(
+    os.tmpdir(),
+    `cst_index_${Math.random().toString(36).substring(7)}`,
+  );
+
+  try {
+    // Find the real .git dir
+    const gitDirRelative = (
+      await runGit(repoPath, ["rev-parse", "--git-dir"])
+    ).trim();
+    const gitDir = path.isAbsolute(gitDirRelative)
+      ? gitDirRelative
+      : path.join(repoPath, gitDirRelative);
+    const currentIndex = path.join(gitDir, "index");
+
+    // Copy current index if it exists
+    if (fs.existsSync(currentIndex)) {
+      fs.copyFileSync(currentIndex, tempIndexFile);
+    }
+
+    const env = { ...process.env, GIT_INDEX_FILE: tempIndexFile };
+
+    // 1. Add all files as "intent-to-add" in the temporary index
+    await runCommand("git", ["add", "-N", "."], repoPath, env);
+
+    // 2. Run the actual command
+    return await runCommand("git", args, repoPath, env);
+  } finally {
+    // Cleanup temp index
+    if (fs.existsSync(tempIndexFile)) {
+      fs.unlinkSync(tempIndexFile);
+    }
   }
 }
