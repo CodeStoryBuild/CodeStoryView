@@ -122,7 +122,7 @@ export async function fetchCommits(
   repoPath: string,
   branch: string = "HEAD",
   limit: number = 100,
-): Promise<{ commits: Commit[]; hasMore: boolean }> {
+): Promise<{ commits: Commit[]; hasMore: boolean; status?: string }> {
   try {
     // Include parent hashes (%P) to build a proper DAG client-side
     let logOutput = "";
@@ -201,11 +201,11 @@ export async function fetchCommits(
           status: trimmedStatus,
         });
       }
+      return { commits, hasMore, status: trimmedStatus };
     } catch {
       // If status fails (e.g., not a git repo), ignore silently
+      return { commits, hasMore };
     }
-
-    return { commits, hasMore };
   } catch (error) {
     throw new Error((error as any).message || "Failed to fetch commits");
   }
