@@ -132,7 +132,7 @@ export async function fetchCommits(
         [
           "log",
           branch,
-          "--pretty=format:%H\x1f%h\x1f%s\x1f%an\x1f%ai\x1f%P",
+          "--pretty=format:%H\x1f%h\x1f%B\x1f%an\x1f%ai\x1f%P%n\x1e",
           `--max-count=${limit + 1}`,
         ],
         { allowErrors: false },
@@ -150,15 +150,15 @@ export async function fetchCommits(
       }
     }
 
-    const lines = logOutput
-      ? logOutput.split("\n").filter((line) => line.trim())
+    const sections = logOutput
+      ? logOutput.split("\x1e").filter((s) => s.trim())
       : [];
-    const hasMore = lines.length > limit;
-    const linesToProcess = hasMore ? lines.slice(0, limit) : lines;
+    const hasMore = sections.length > limit;
+    const sectionsToProcess = hasMore ? sections.slice(0, limit) : sections;
 
-    const commits: Commit[] = linesToProcess.map((line) => {
+    const commits: Commit[] = sectionsToProcess.map((section) => {
       const [hash, shortHash, message, author, date, parentsStr] =
-        line.split("\x1f");
+        section.trim().split("\x1f");
       const parents = (parentsStr || "")
         .split(" ")
         .map((p) => p.trim())
@@ -168,7 +168,7 @@ export async function fetchCommits(
         id: hash,
         label: shortHash,
         hash,
-        message,
+        message: message || "",
         author,
         date,
         parents,

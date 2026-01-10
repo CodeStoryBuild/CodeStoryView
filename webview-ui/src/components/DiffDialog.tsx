@@ -23,6 +23,7 @@ import {
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
@@ -299,15 +300,14 @@ export function DiffDialog({
               {filePath}
             </span>
             <span
-              className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${
-                isNew
-                  ? "bg-emerald-500/20 text-emerald-400"
-                  : isDeleted
-                    ? "bg-rose-500/20 text-rose-400"
-                    : isRename
-                      ? "bg-amber-500/20 text-amber-400"
-                      : "bg-blue-500/10 text-blue-400"
-              }`}
+              className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded ${isNew
+                ? "bg-emerald-500/20 text-emerald-400"
+                : isDeleted
+                  ? "bg-rose-500/20 text-rose-400"
+                  : isRename
+                    ? "bg-amber-500/20 text-amber-400"
+                    : "bg-blue-500/10 text-blue-400"
+                }`}
             >
               {fileTypeLabel}
             </span>
@@ -481,8 +481,8 @@ export function DiffDialog({
         >
           <DialogHeader className="p-3 sm:p-4 border-b border-border shrink-0 bg-muted/20 pr-12">
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 sm:gap-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
+              <div className="space-y-1 min-w-0 flex-1">
+                <div className="flex items-center gap-2 min-w-0">
                   <Badge
                     variant="outline"
                     className="bg-primary/5 text-primary border-primary/20 font-mono text-[10px] h-5 px-1.5"
@@ -513,8 +513,10 @@ export function DiffDialog({
                       Merge-Downstream
                     </Badge>
                   )}
-                  <DialogTitle className="text-base font-semibold line-clamp-1">
-                    {commit?.message || "Commit Details"}
+                  <DialogTitle className="text-base font-semibold leading-tight flex-1 min-w-0">
+                    <div className="max-w-[calc(100vw-180px)] sm:max-w-[calc(100vw-150px)] overflow-x-auto custom-scrollbar-horizontal whitespace-nowrap pr-2 py-1 font-sans">
+                      {commit?.message || "Commit Details"}
+                    </div>
                   </DialogTitle>
                 </div>
                 <DialogDescription className="flex flex-wrap items-center gap-2 sm:gap-4 text-muted-foreground text-[10px] sm:text-[11px]">
@@ -545,11 +547,17 @@ export function DiffDialog({
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full">
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="flex items-center gap-1">
-                      <Input
+                      <Textarea
                         placeholder="Guidance for LLM..."
                         value={guidanceMessage}
                         onChange={(e) => setGuidanceMessage(e.target.value)}
-                        className="h-7 text-[11px] w-32 sm:w-48 bg-background/50 border-border/50 focus:border-primary/50"
+                        className="h-7 min-h-[28px] max-h-32 text-[11px] w-32 sm:w-48 bg-background/50 border-border/50 focus:border-primary/50 py-1 px-2 resize-none overflow-y-auto custom-scrollbar leading-tight"
+                        rows={1}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                            handleCodestoryCommand("commit");
+                          }
+                        }}
                       />
                       <TooltipProvider>
                         <Tooltip>
@@ -660,11 +668,10 @@ export function DiffDialog({
                             className={`
                                 flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono whitespace-nowrap
                                 border transition-all cursor-pointer shrink-0
-                                ${
-                                  selectedFiles.has(file)
-                                    ? "bg-primary/10 border-primary/30 text-primary"
-                                    : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
-                                }
+                                ${selectedFiles.has(file)
+                                ? "bg-primary/10 border-primary/30 text-primary"
+                                : "bg-muted/30 border-border/50 text-muted-foreground hover:border-border"
+                              }
                               `}
                           >
                             {selectedFiles.has(file) ? (
@@ -684,11 +691,17 @@ export function DiffDialog({
               ) : !isIneligible ? (
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-1">
-                    <Input
+                    <Textarea
                       placeholder="Guidance for LLM..."
                       value={guidanceMessage}
                       onChange={(e) => setGuidanceMessage(e.target.value)}
-                      className="h-7 text-[11px] w-32 sm:w-48 bg-background/50 border-border/50 focus:border-primary/50"
+                      className="h-7 min-h-[28px] max-h-32 text-[11px] w-32 sm:w-48 bg-background/50 border-border/50 focus:border-primary/50 py-1 px-2 resize-none overflow-y-auto custom-scrollbar leading-tight"
+                      rows={1}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                          handleCodestoryCommand("fix");
+                        }
+                      }}
                     />
                     <TooltipProvider>
                       <Tooltip>
@@ -716,9 +729,8 @@ export function DiffDialog({
                             }
                           >
                             <RotateCcw
-                              className={`h-3 w-3 ${
-                                isCurrentExecuting ? "animate-spin" : ""
-                              }`}
+                              className={`h-3 w-3 ${isCurrentExecuting ? "animate-spin" : ""
+                                }`}
                             />
                             Fix
                           </Button>
