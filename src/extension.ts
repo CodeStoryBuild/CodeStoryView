@@ -97,11 +97,11 @@ export function activate(context: vscode.ExtensionContext) {
   let nonRepoDebounceTimer: NodeJS.Timeout | undefined;
   let lastState:
     | {
-      branches: string[];
-      currentBranch: string | undefined;
-      isDetached: boolean;
-      commits: any[];
-    }
+        branches: string[];
+        currentBranch: string | undefined;
+        isDetached: boolean;
+        commits: any[];
+      }
     | undefined;
 
   async function handleLoadRepo(
@@ -599,7 +599,7 @@ export function activate(context: vscode.ExtensionContext) {
                 if (configStr) {
                   try {
                     apiKey = JSON.parse(configStr).api_key;
-                  } catch (e) { }
+                  } catch (e) {}
                 }
                 await runCstInTerminal(
                   "Codestory Test",
@@ -647,7 +647,7 @@ export function activate(context: vscode.ExtensionContext) {
                   diff,
                   commitHash: message.commitHash,
                 });
-              } catch (error) { }
+              } catch (error) {}
               return;
             case "getGlobalConfig":
               const configStr = await context.secrets.get(
@@ -657,7 +657,7 @@ export function activate(context: vscode.ExtensionContext) {
               if (configStr) {
                 try {
                   config = JSON.parse(configStr);
-                } catch (e) { }
+                } catch (e) {}
               }
               const branchUpdateStrategy = vscode.workspace
                 .getConfiguration("codestoryView")
