@@ -52,6 +52,7 @@ export class DiffHighlighter {
       if (groups.comment) className = "c";
       else if (groups.string) className = "s";
       else if (groups.keyword) className = "k";
+      else if (groups.type) className = "t";
       else if (groups.number) className = "n";
       else if (groups.operator) className = "o";
       else if (groups.call) className = "f";
