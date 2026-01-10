@@ -379,17 +379,19 @@ async function runGitWithTempIndex(
     }
     const currentIndex = path.join(gitDir, "index");
 
-    // Copy current index if it exists
-    if (fs.existsSync(currentIndex)) {
-      fs.copyFileSync(currentIndex, tempIndexFile);
-    }
-
     const env = { ...process.env, GIT_INDEX_FILE: tempIndexFile };
 
-    // 1. Add all files as "intent-to-add" in the temporary index
+    // 1. Initialize temp index from HEAD (if it exists)
+    try {
+      await runCommand("git", ["read-tree", "HEAD"], repoPath, env);
+    } catch {
+      // If no HEAD (empty repo), leave index empty
+    }
+
+    // 2. Add all files as "intent-to-add" in the temporary index
     await runCommand("git", ["add", "-N", "."], repoPath, env);
 
-    // 2. Run the actual command
+    // 3. Run the actual command
     return await runCommand("git", args, repoPath, env);
   } finally {
     // Cleanup temp index
